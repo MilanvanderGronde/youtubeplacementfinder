@@ -147,13 +147,12 @@ def main():
 
         st.divider()
         st.header("2. Search Filters")
-        query = st.text_input("Search Query", value="Colosseum tours")
+        query = st.text_input("Search Query", value="")
 
         year_input = st.text_input("Year (Leave blank for all time)", value="2025")
         year = int(year_input) if year_input.strip() and year_input.isdigit() else None
 
-        target_total = st.number_input("Total Videos to Fetch (for CSV)", min_value=1, max_value=100, value=20)
-        min_views = st.number_input("Min Views Threshold", min_value=0, value=10)
+        target_total = st.number_input("Total Videos to Fetch (for CSV)", min_value=1, max_value=500, value=10)
 
     # --- FLOATING BUTTON (STICKY RIGHT BOTTOM) ---
     buymeacoffee_url = "https://buymeacoffee.com/youtubeplacementfinder"
