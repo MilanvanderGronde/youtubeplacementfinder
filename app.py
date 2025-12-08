@@ -151,6 +151,7 @@ def main():
 
         year_input = st.text_input("Year (Leave blank for all time)", value="2025")
         year = int(year_input) if year_input.strip() and year_input.isdigit() else None
+        min_views = st.number_input("Min Views Threshold", min_value=0, value=10)
 
         target_total = st.number_input("Total Videos to Fetch (for CSV)", min_value=1, max_value=500, value=10)
 
