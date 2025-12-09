@@ -240,7 +240,7 @@ def main():
 
         query = st.text_input(
             "Search Query",
-            value="Colosseum tours",
+            value="",
             help=query_help_text
         )
 
