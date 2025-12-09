@@ -157,29 +157,37 @@ def main():
     st.title("🎯 ContextLab - Placement Finder")
     st.markdown("""
     **Relevance is key.** Show your ads to the right audience, on the right videos, at the right time. 
-    Use this tool to generate highly targeted placement lists for your YouTube campaigns.
+    Use this tool to generate highly targeted placement lists for your YouTube campaigns and stop wasting budget on irrelevant placements.
     """)
 
     # 1. Sidebar: Configuration
     with st.sidebar:
-        st.header("1. Credentials")
-
-        # Link Restored Here
-        st.markdown("👉 [**How to get an API Key?**](https://developers.google.com/youtube/v3/getting-started) 🔑")
-
+        # Check for key in Secrets or URL
         default_key = ""
         if "YOUTUBE_API_KEY" in st.secrets:
             default_key = st.secrets["YOUTUBE_API_KEY"]
         elif "api_key" in st.query_params:
             default_key = st.query_params["api_key"]
 
-        api_key = st.text_input("YouTube API Key", value=default_key, type="password",
-                                help="Enter your YouTube Data API v3 Key from Google Cloud Console.")
+        # LOGIC: Only show the input field if NO key was found
+        if not default_key:
+            st.header("1. Credentials")
+            st.markdown("👉 [**How to get an API Key?**](https://developers.google.com/youtube/v3/getting-started) 🔑")
 
-        if api_key and api_key != default_key:
-            st.query_params["api_key"] = api_key
+            api_key = st.text_input("YouTube API Key", type="password",
+                                    help="Enter your YouTube Data API v3 Key from Google Cloud Console.")
+            st.divider()
 
-        st.divider()
+            # If user enters a key manually, save it to URL so they can bookmark it
+            if api_key:
+                st.query_params["api_key"] = api_key
+        else:
+            # If key is found, use it silently and skip the UI
+            api_key = default_key
+            # Optional: Small indicator that it's working
+            #st.caption("✅ API Key loaded automatically")
+
+       # st.divider()
         st.header("2. Targeting")
 
         query = st.text_input("Search Query", value="",
