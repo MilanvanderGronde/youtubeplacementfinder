@@ -192,13 +192,12 @@ def main():
                     <style>
                     #MainMenu {visibility: hidden;}
                     footer {visibility: hidden;}
-                    header {visibility: hidden;}
                     </style>
                     """)
     st.markdown(
         hide_st_style, unsafe_allow_html=True
     )
-    st.title("🎯 YouTube Placement Finder")
+    st.title("🎯 ContextLab - YouTube Placement Finder")
     st.markdown("Generate targeted video lists for your marketing campaigns.")
 
     # 1. Sidebar: Configuration
