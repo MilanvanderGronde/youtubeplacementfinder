@@ -118,3 +118,32 @@ header {visibility: hidden;} /* Hides the top decoration bar */
 /* Badges */
 .engagement-badge { background: #e8f0fe; color: #1967d2; padding: 2px 8px; border-radius: 12px; font-weight: 500; font-size: 11px; border: 1px solid #d2e3fc; }
 .lang-tag { font-size: 10px; padding: 1px 5px; border: 1px solid #dadce0; border-radius: 4px; color: #5f6368; margin-left: 6px; background: #fff; }
+
+.creator-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: #ffffff;
+    border-top: 1px solid #dadce0;
+    text-align: right;
+    padding: 10px 0;
+    font-size: 13px;
+    color: #5f6368;
+    z-index: 9998; /* Below the coffee button */
+}
+
+.creator-footer a {
+    color: #1a73e8;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.creator-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Adjust main content padding so it doesn't get hidden behind the footer */
+.block-container {
+    padding-bottom: 80px !important;
+}
