@@ -24,7 +24,9 @@ section[data-testid="stSidebar"] > div > div:first-child button {
 
 /* 3. ALIGN TO TOP (Reduce Padding) */
 .block-container {
-    padding-top: 2rem !important;
+    padding-top: 1rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
     padding-bottom: 5rem !important;
 }
 
@@ -136,7 +138,9 @@ section[data-testid="stSidebar"] > div > div:first-child button {
     font-size: 13px;
     color: #5f6368;
     z-index: 9998; /* Below the coffee button */
+    padding-right: 2rem;
 }
+.creator-footer img {margin-left: 1rem;}
 
 .creator-footer a {
     color: #1a73e8;
@@ -152,3 +156,5 @@ section[data-testid="stSidebar"] > div > div:first-child button {
 .block-container {
     padding-bottom: 80px !important;
 }
+
+[data-testid="stSidebarHeader"] {margin-bottom: 0rem!important;}
