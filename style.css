@@ -13,8 +13,13 @@ footer {visibility: hidden;}
 header {visibility: hidden;} /* Hides the top decoration bar */
 
 /* 2. LOCK SIDEBAR OPEN (Hide the close button) */
-[data-testid="stSidebarCollapseBtn"] {
+[data-testid="stSidebarCollapseBtn"],
+[data-testid="collapsedControl"],
+section[data-testid="stSidebar"] > div > div:first-child button {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 /* 3. ALIGN TO TOP (Reduce Padding) */
