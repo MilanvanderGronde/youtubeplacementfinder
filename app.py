@@ -237,14 +237,18 @@ def main():
         target_total = st.number_input("Max Results", min_value=1, max_value=1000, value=20,
                                        help="Maximum number of videos to retrieve.")
 
-    # Floating Button
+    # --- CREATOR FOOTER ---
+    linkedin_url = "https://www.linkedin.com/in/milan-van-der-gronde/"
     buymeacoffee_url = "https://buymeacoffee.com/youtubeplacementfinder"
     st.markdown(f"""
-        <div class="fixed-bottom-right">
-            <a href="{buymeacoffee_url}" target="_blank">
+            <div class="creator-footer">
+                Created by <b>Milan van der Gronde</b> • 
+                <a href="{linkedin_url}" target="_blank">Let's Connect on LinkedIn 🔗</a>
+                <a href="{buymeacoffee_url}" target="_blank">
                 <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="160">
             </a>
-        </div>""", unsafe_allow_html=True)
+            </div>
+        """, unsafe_allow_html=True)
 
     # 2. Main Area: Logic
     if not api_key:
