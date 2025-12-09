@@ -15,7 +15,6 @@ st.set_page_config(
     layout="wide"
 )
 
-
 # --- HELPER FUNCTIONS ---
 
 def parse_duration(duration_iso):
@@ -188,6 +187,17 @@ def search_videos(youtube, query, category_id, target_total, year, region_code, 
 
 # --- MAIN UI ---
 def main():
+    # --- HIDE STREAMLIT STYLE ---
+    hide_st_style = ("""
+                    <style>
+                    #MainMenu {visibility: hidden;}
+                    footer {visibility: hidden;}
+                    header {visibility: hidden;}
+                    </style>
+                    """)
+    st.markdown(
+        hide_st_style, unsafe_allow_html=True
+    )
     st.title("🎯 YouTube Placement Finder")
     st.markdown("Generate targeted video lists for your marketing campaigns.")
 
@@ -323,7 +333,7 @@ def main():
         <style>
             .fixed-bottom-right {{
                 position: fixed;
-                top: 5rem;
+                top: 1rem;
                 right: 20px;
                 z-index: 9999;
                 background-color: transparent;
