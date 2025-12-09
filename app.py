@@ -269,7 +269,7 @@ def main():
         year_input = st.text_input("Year (Leave blank for all time)", value="2025")
         year = int(year_input) if year_input.strip() and year_input.isdigit() else None
 
-        target_total = st.number_input("Total Videos to Fetch (for CSV)", min_value=1, max_value=100, value=20)
+        target_total = st.number_input("Total Videos to Fetch (for CSV)", min_value=1, max_value=1000, value=20)
 
     # --- FLOATING BUTTON ---
     buymeacoffee_url = "https://buymeacoffee.com/youtubeplacementfinder"
@@ -433,7 +433,7 @@ def main():
                     mime="text/csv"
                 )
 
-            st.subheader(f"Top 20 Card Preview")
+            st.subheader(f"Top 10 Card Preview")
             sort_col1, sort_col2 = st.columns([1, 4])
             with sort_col1:
                 local_sort_option = st.selectbox(
@@ -459,7 +459,7 @@ def main():
             elif "Newest" in local_sort_option:
                 preview_df = preview_df.sort_values(by="Published Date", ascending=False)
 
-            preview_list = preview_df.head(20).to_dict('records')
+            preview_list = preview_df.head(10).to_dict('records')
 
             # --- CSS GRID RENDER WITH INSTANT TOOLTIPS ---
             grid_html = textwrap.dedent("""
