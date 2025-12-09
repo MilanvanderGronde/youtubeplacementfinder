@@ -311,7 +311,7 @@ def main():
         target_total = st.number_input(
             "Total Videos to Fetch (for CSV)",
             min_value=1,
-            max_value=100,
+            max_value=1000,
             value=20,
             help="The maximum number of videos to retrieve from the API. Higher numbers consume more quota."
         )
@@ -483,7 +483,7 @@ def main():
                     mime="text/csv"
                 )
 
-            st.subheader(f"Top 20 Card Preview")
+            st.subheader(f"Top 10 Card Preview")
             sort_col1, sort_col2 = st.columns([1, 4])
             with sort_col1:
                 local_sort_option = st.selectbox(
@@ -509,7 +509,7 @@ def main():
             elif "Newest" in local_sort_option:
                 preview_df = preview_df.sort_values(by="Published Date", ascending=False)
 
-            preview_list = preview_df.head(20).to_dict('records')
+            preview_list = preview_df.head(10).to_dict('records')
 
             # --- CSS GRID RENDER WITH INSTANT TOOLTIPS ---
             grid_html = textwrap.dedent("""
@@ -521,7 +521,7 @@ def main():
                 .thumbnail-container img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.9; }
                 .thumbnail-container:hover img { opacity: 1.0; }
                 .duration-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-                .rank-badge { position: absolute; top: 8px; left: 8px; background: #FF0000; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+                .rank-badge { position: absolute !important; top: 8px; left: 8px; background: #FF0000; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
                 .card-content { padding: 12px; flex-grow: 1; display: flex; flex-direction: column; }
                 .video-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 6px; text-decoration: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
                 .video-title:hover { color: #d93025; }
@@ -576,7 +576,7 @@ def main():
                 <div class="video-card">
                     <a href="{row['URL']}" target="_blank" class="thumbnail-container">
                         <img src="{row['Thumbnail']}" alt="{row['Title']}">
-                        <div class="rank-badge tooltip" data-tooltip="Rank #{row['Rank']} in API Results">#{row['Rank']}</div>
+                        <div class="rank-badge tooltip" data-tooltip="Rank #{row['Rank']} in API Results">Relevancy: #{row['Rank']}</div>
                         <div class="duration-badge">{duration_fmt}</div>
                     </a>
                     <div class="card-content">
