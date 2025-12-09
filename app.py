@@ -122,7 +122,7 @@ def get_channel_stats(youtube, channel_ids):
 
 def search_videos(youtube, query, category_id, target_total, year, region_code, sort_order, relevance_language,
                   video_duration, video_type):
-    """Main search logic refactored to return a list of dicts. Includes new filters."""
+    """Main search logic refactored to return a list of dicts. Min Views logic removed."""
     all_videos = []
     next_page_token = None
 
@@ -202,7 +202,12 @@ def main():
         if not default_key and "YOUTUBE_API_KEY" in st.secrets:
             default_key = st.secrets["YOUTUBE_API_KEY"]
 
-        api_key = st.text_input("Enter YouTube API Key", value=default_key, type="password")
+        api_key = st.text_input(
+            "Enter YouTube API Key",
+            value=default_key,
+            type="password",
+            help="Your private YouTube Data API v3 key from Google Cloud Console."
+        )
 
         if api_key:
             if api_key == default_key:
@@ -214,7 +219,21 @@ def main():
 
         st.divider()
         st.header("2. Search Filters")
-        query = st.text_input("Search Query", value="Colosseum tours")
+
+        # SEARCH QUERY TIP
+        query_help_text = """
+        Your request can also use the Boolean NOT (-) and OR (|) operators to exclude videos or to find videos that are associated with one of several search terms.
+
+        For example:
+        - To search for videos matching either "boating" or "sailing", enter: `boating|sailing`
+        - To search for videos matching "boating" or "sailing" but NOT "fishing", enter: `boating|sailing -fishing`
+        """
+
+        query = st.text_input(
+            "Search Query",
+            value="Colosseum tours",
+            help=query_help_text
+        )
 
         # --- LOCATION FILTER ---
         country_names = sorted(list(ALL_COUNTRY_CODES.keys()))
@@ -223,7 +242,8 @@ def main():
         selected_country = st.selectbox(
             "Target Location",
             options=country_names,
-            index=default_country_index
+            index=default_country_index,
+            help="Restricts the search results to videos viewable or trending in this country."
         )
         selected_region_code = ALL_COUNTRY_CODES[selected_country]
 
@@ -232,7 +252,7 @@ def main():
             "Language Bias",
             options=list(LANGUAGE_CODES.keys()),
             index=0,
-            help="Tells YouTube to prioritize results in this language."
+            help="Tells YouTube to prioritize results in this language (e.g. 'French' finds French content)."
         )
         selected_lang_code = LANGUAGE_CODES[selected_lang_label]
 
@@ -243,7 +263,12 @@ def main():
             "Medium (4 - 20 min)": "medium",
             "Long (> 20 min)": "long"
         }
-        selected_duration_label = st.selectbox("Video Duration", options=list(duration_options.keys()), index=0)
+        selected_duration_label = st.selectbox(
+            "Video Duration",
+            options=list(duration_options.keys()),
+            index=0,
+            help="Filter results by video length (Short, Medium, or Long)."
+        )
         selected_duration_code = duration_options[selected_duration_label]
 
         # --- TYPE FILTER ---
@@ -252,7 +277,12 @@ def main():
             "Movie": "movie",
             "Episode": "episode"
         }
-        selected_type_label = st.selectbox("Video Type", options=list(type_options.keys()), index=0)
+        selected_type_label = st.selectbox(
+            "Video Type",
+            options=list(type_options.keys()),
+            index=0,
+            help="Restrict your search to specific content types like Movies or TV Episodes."
+        )
         selected_type_code = type_options[selected_type_label]
 
         # --- ORDER FILTER ---
@@ -263,13 +293,28 @@ def main():
             "Rating (Highest)": "rating",
             "Title (A-Z)": "title"
         }
-        selected_sort_label = st.selectbox("Sort Order (API)", options=list(sort_options.keys()), index=0)
+        selected_sort_label = st.selectbox(
+            "Sort Order (API)",
+            options=list(sort_options.keys()),
+            index=0,
+            help="Determines how YouTube ranks the results before sending them to you."
+        )
         selected_sort_order = sort_options[selected_sort_label]
 
-        year_input = st.text_input("Year (Leave blank for all time)", value="2025")
+        year_input = st.text_input(
+            "Year (Leave blank for all time)",
+            value="2025",
+            help="Filter for videos published within a specific calendar year (e.g. 2024)."
+        )
         year = int(year_input) if year_input.strip() and year_input.isdigit() else None
 
-        target_total = st.number_input("Total Videos to Fetch (for CSV)", min_value=1, max_value=100, value=20)
+        target_total = st.number_input(
+            "Total Videos to Fetch (for CSV)",
+            min_value=1,
+            max_value=100,
+            value=20,
+            help="The maximum number of videos to retrieve from the API. Higher numbers consume more quota."
+        )
 
     # --- FLOATING BUTTON ---
     buymeacoffee_url = "https://buymeacoffee.com/youtubeplacementfinder"
@@ -317,7 +362,12 @@ def main():
 
         col1, col2 = st.columns([1, 1])
         with col1:
-            selected_cat_name = st.selectbox("Select Category", options=cat_options, index=0)
+            selected_cat_name = st.selectbox(
+                "Select Category",
+                options=cat_options,
+                index=0,
+                help="Filter results to a specific YouTube category (e.g. Travel, Gaming)."
+            )
 
         selected_cat_id = name_to_id[selected_cat_name]
 
