@@ -332,7 +332,7 @@ def main():
         <style>
             .fixed-bottom-right {{
                 position: fixed;
-                top: 1rem;
+                bottom: 1rem;
                 right: 20px;
                 z-index: 9999;
                 background-color: transparent;
