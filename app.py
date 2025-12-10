@@ -9,18 +9,16 @@ from constants import ALL_COUNTRY_CODES, LANGUAGE_CODES
 
 # --- PAGE CONFIG ---
 st.set_page_config(
-    page_title="ContextLab - Placement Finder",
+    page_title="ContextLab - Placement Finder", 
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" 
 )
-
 
 # --- CSS LOADER ---
 def load_css(file_name):
     with open(file_name) as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
 
 # --- HELPER FUNCTIONS ---
 def parse_duration(duration_iso):
@@ -34,7 +32,6 @@ def parse_duration(duration_iso):
     if seconds: total_seconds += int(seconds)
     return total_seconds
 
-
 def format_duration(seconds):
     if not seconds: return "0:00"
     m, s = divmod(seconds, 60)
@@ -42,31 +39,22 @@ def format_duration(seconds):
     if h > 0: return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
 
-
 def format_time_ago(date_str):
     try:
         pub_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         diff = now - pub_date
-        if diff.days == 0:
-            return "Today"
-        elif diff.days == 1:
-            return "Yesterday"
-        elif diff.days < 30:
-            return f"{diff.days} days ago"
-        elif diff.days < 365:
-            months = diff.days // 30; return f"{months} mo ago"
-        else:
-            years = diff.days // 365; return f"{years} yr ago"
-    except:
-        return date_str
-
+        if diff.days == 0: return "Today"
+        elif diff.days == 1: return "Yesterday"
+        elif diff.days < 30: return f"{diff.days} days ago"
+        elif diff.days < 365: months = diff.days // 30; return f"{months} mo ago"
+        else: years = diff.days // 365; return f"{years} yr ago"
+    except: return date_str
 
 def format_big_number(num):
-    if num >= 1_000_000: return f"{num / 1_000_000:.1f}M"
-    if num >= 1_000: return f"{num / 1_000:.0f}k"
+    if num >= 1_000_000: return f"{num/1_000_000:.1f}M"
+    if num >= 1_000: return f"{num/1_000:.0f}k"
     return str(num)
-
 
 # --- CACHED DATA FETCHING ---
 @st.cache_data(show_spinner=False)
@@ -77,17 +65,15 @@ def get_category_map(_youtube_service, region_code="US"):
         response = request.execute()
         for item in response.get("items", []):
             category_map[item["id"]] = item["snippet"]["title"]
-    except HttpError:
-        pass
+    except HttpError: pass
     return category_map
-
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def get_channel_stats(_youtube, channel_ids):
     if not channel_ids: return {}
     channel_stats_map = {}
     unique_ids_list = list(channel_ids)
-
+    
     for i in range(0, len(unique_ids_list), 50):
         batch_ids = unique_ids_list[i:i + 50]
         try:
@@ -97,31 +83,28 @@ def get_channel_stats(_youtube, channel_ids):
                 channel_id = item["id"]
                 stats = item.get("statistics", {})
                 snippet = item.get("snippet", {})
-
+                
                 sub_count = stats.get("subscriberCount", "N/A")
                 view_count = int(stats.get("viewCount", 0))
-
+                
                 # Robust Image Fetch
                 thumbs = snippet.get("thumbnails", {})
                 thumb_url = thumbs.get("default", {}).get("url") or \
                             thumbs.get("medium", {}).get("url") or \
                             thumbs.get("high", {}).get("url") or \
-                            "https://cdn-icons-png.flaticon.com/512/847/847969.png"  # Fallback
-
+                            "https://cdn-icons-png.flaticon.com/512/847/847969.png" # Fallback
+                
                 channel_stats_map[channel_id] = {
                     "subscriberCount": sub_count,
                     "videoCount": stats.get("videoCount", 0),
                     "totalChannelViews": view_count,
                     "thumbnail": thumb_url
                 }
-        except HttpError:
-            pass
+        except HttpError: pass
     return channel_stats_map
 
-
 @st.cache_data(show_spinner=False, ttl=3600)
-def search_videos(_youtube, query, category_id, target_total, year, region_code, sort_order, relevance_language,
-                  video_duration, video_type):
+def search_videos(_youtube, query, category_id, target_total, year, region_code, sort_order, relevance_language, video_duration, video_type):
     all_videos = []
     next_page_token = None
     max_per_page = 50
@@ -145,18 +128,15 @@ def search_videos(_youtube, query, category_id, target_total, year, region_code,
             video_ids = [item["id"]["videoId"] for item in search_response.get("items", [])]
             if not video_ids: break
 
-            video_response = _youtube.videos().list(part="snippet,statistics,contentDetails",
-                                                    id=",".join(video_ids)).execute()
+            video_response = _youtube.videos().list(part="snippet,statistics,contentDetails", id=",".join(video_ids)).execute()
             fetched_videos = video_response.get("items", [])
             for video in fetched_videos:
                 all_videos.append(video)
                 if len(all_videos) >= target_total: return all_videos[:target_total]
             next_page_token = search_response.get("nextPageToken")
             if not next_page_token: break
-    except HttpError as e:
-        st.error(f"API Error: {e}")
+    except HttpError as e: st.error(f"API Error: {e}")
     return all_videos
-
 
 # --- MAIN UI ---
 def main():
@@ -165,7 +145,9 @@ def main():
     except FileNotFoundError:
         st.error("style.css not found. Please create the file.")
 
+    # --- HEADER (Logo Removed) ---
     st.title("🎯 ContextLab - Placement Finder")
+
     st.markdown("""
     Relevance is key. Show your ads to the right audience, on the right videos, at the right time. 
     Use this tool to generate highly targeted placement lists for your YouTube campaigns and stop wasting budget on irrelevant placements.
@@ -182,15 +164,14 @@ def main():
         if not default_key:
             st.header("Credentials")
             st.markdown("👉 [**How to get an API Key?**](https://developers.google.com/youtube/v3/getting-started) 🔑")
-            api_key = st.text_input("YouTube API Key", type="password",
-                                    help="Enter your YouTube Data API v3 Key from Google Cloud Console.")
+            api_key = st.text_input("YouTube API Key", type="password", help="Enter your YouTube Data API v3 Key from Google Cloud Console.")
             if api_key: st.query_params["api_key"] = api_key
             st.divider()
         else:
             api_key = default_key
             current_url_key = st.query_params.get("api_key", "")
             if api_key != current_url_key and "YOUTUBE_API_KEY" not in st.secrets:
-                if st.button("🔗 Generate Bookmark Link"):
+                 if st.button("🔗 Generate Bookmark Link"):
                     st.query_params["api_key"] = api_key
                     st.success("Link updated!")
 
@@ -201,7 +182,7 @@ def main():
             qb_includes = st.text_input("Contains words", placeholder="e.g. boat sailing")
             qb_exact = st.text_input("Exact phrase", placeholder="e.g. Google Ads")
             qb_excludes = st.text_input("Exclude words", placeholder="e.g. roblox game")
-
+            
             if st.button("Apply to Search"):
                 parts = []
                 if qb_includes: parts.append(qb_includes)
@@ -211,9 +192,8 @@ def main():
                 st.rerun()
 
         if "search_query" not in st.session_state: st.session_state.search_query = ""
-        query = st.text_input("Search Query", key="search_query",
-                              help="Use quotes \"...\" for exact match, | for OR, and - for NOT.")
-
+        query = st.text_input("Search Query", key="search_query", help="Use quotes \"...\" for exact match, | for OR, and - for NOT.")
+        
         country_names = sorted(list(ALL_COUNTRY_CODES.keys()))
         default_idx = country_names.index("United States") if "United States" in country_names else 0
         selected_country = st.selectbox("Target Location", options=country_names, index=default_idx)
@@ -225,9 +205,8 @@ def main():
         try:
             youtube_temp = build("youtube", "v3", developerKey=api_key) if api_key else None
             cat_map = get_category_map(youtube_temp, region_code=selected_region_code) if youtube_temp else {}
-        except:
-            cat_map = {}
-
+        except: cat_map = {}
+            
         name_to_id = {v: k for k, v in cat_map.items()}
         name_to_id["All Categories"] = "All"
         cat_options = ["All Categories"] + sorted([k for k in name_to_id.keys() if k != "All Categories"])
@@ -237,9 +216,8 @@ def main():
         duration_options = {"Any": "any", "Short (<4m)": "short", "Medium (4-20m)": "medium", "Long (>20m)": "long"}
         selected_duration_label = st.selectbox("Duration", options=list(duration_options.keys()), index=0)
         selected_duration_code = duration_options[selected_duration_label]
-
-        year_input = st.text_input("Publish Year", value="", placeholder="All time (e.g. 2025)",
-                                   help="Leave empty for all time.")
+        
+        year_input = st.text_input("Publish Year", value="", placeholder="All time (e.g. 2025)", help="Leave empty for all time.")
         year = int(year_input) if year_input.strip() and year_input.isdigit() else None
         target_total = st.number_input("Max Results", min_value=1, max_value=1000, value=20)
 
@@ -267,13 +245,13 @@ def main():
             display_year = year if year else "All Time"
             lang_msg = f"in {selected_lang_label}" if selected_lang_code else ""
             with st.spinner(f"Searching for '{query}' in {selected_country} {lang_msg}..."):
-
+                
                 raw_videos = search_videos(
-                    youtube, query, selected_cat_id, target_total, year,
-                    selected_region_code, 'relevance', selected_lang_code,
+                    youtube, query, selected_cat_id, target_total, year, 
+                    selected_region_code, 'relevance', selected_lang_code, 
                     selected_duration_code, 'any'
                 )
-
+                
                 if not raw_videos:
                     st.warning("No videos found matching criteria.")
                     return
@@ -300,7 +278,7 @@ def main():
                         today_dt = datetime.now(timezone.utc)
                         days_live = (today_dt - pub_dt).days
                         avg_daily_views = views / days_live if days_live > 0 else views
-
+                    
                     cid = snippet.get("channelId")
                     c_stats = channel_stats.get(cid, {})
                     cat_id = snippet.get("categoryId")
@@ -337,12 +315,12 @@ def main():
             df_full = st.session_state['df_full']
             meta_name = st.session_state.get('search_meta', 'results')
             st.divider()
-
+            
             total_vids = len(df_full)
             total_views = int(df_full['Views'].sum())
             total_daily = int(df_full['Avg Views per Day'].sum())
             csv_data = df_full.to_csv(index=False).encode('utf-8')
-
+            
             tab_videos, tab_channels = st.tabs(["📹 Video Results", "📢 Channel Insights"])
 
             # --- TAB 1: VIDEOS ---
@@ -358,13 +336,13 @@ def main():
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-
+                    
                     c1, c2 = st.columns([3, 1])
                     with c1:
                         count_high = len(df_full[df_full['Views'] > 10000])
-                        count_mid = len(df_full[(df_full['Views'] >= 1000) & (df_full['Views'] <= 10000)])
-                        count_low = len(df_full[df_full['Views'] < 1000])
-
+                        count_mid  = len(df_full[(df_full['Views'] >= 1000) & (df_full['Views'] <= 10000)])
+                        count_low  = len(df_full[df_full['Views'] < 1000])
+                        
                         segment_filter = st.radio(
                             "Filter Results by View Count:",
                             options=["All", "> 10k Views", "1k - 10k Views", "< 1k Views"],
@@ -378,33 +356,23 @@ def main():
                             label_visibility="collapsed"
                         )
                     with c2:
-                        st.download_button("📥 Download Results (CSV)", csv_data, f"youtube_{meta_name}.csv", "text/csv",
-                                           type="primary", use_container_width=True)
-
+                        st.download_button("📥 Download Results (CSV)", csv_data, f"youtube_{meta_name}.csv", "text/csv", type="primary", use_container_width=True)
+                
                 filtered_df = df_full.copy()
-                if "> 10k" in segment_filter:
-                    filtered_df = filtered_df[filtered_df['Views'] > 10000]
-                elif "1k - 10k" in segment_filter:
-                    filtered_df = filtered_df[(filtered_df['Views'] >= 1000) & (filtered_df['Views'] <= 10000)]
-                elif "< 1k" in segment_filter:
-                    filtered_df = filtered_df[filtered_df['Views'] < 1000]
-
+                if "> 10k" in segment_filter: filtered_df = filtered_df[filtered_df['Views'] > 10000]
+                elif "1k - 10k" in segment_filter: filtered_df = filtered_df[(filtered_df['Views'] >= 1000) & (filtered_df['Views'] <= 10000)]
+                elif "< 1k" in segment_filter: filtered_df = filtered_df[filtered_df['Views'] < 1000]
+                
                 sort_col1, _ = st.columns([2, 2])
                 with sort_col1:
-                    local_sort = st.selectbox("Sort Preview By",
-                                              ["Relevance (Default)", "Engagement (High)", "Views (High)",
-                                               "Daily Views (High)", "Newest First"], index=0, key="local_sort")
-
+                    local_sort = st.selectbox("Sort Preview By", ["Relevance (Default)", "Engagement (High)", "Views (High)", "Daily Views (High)", "Newest First"], index=0, key="local_sort")
+                
                 preview_df = filtered_df.copy()
-                if "Engagement" in local_sort:
-                    preview_df = preview_df.sort_values("Like-to-View Ratio (%)", ascending=False)
-                elif "Views" in local_sort and "Daily" not in local_sort:
-                    preview_df = preview_df.sort_values("Views", ascending=False)
-                elif "Daily" in local_sort:
-                    preview_df = preview_df.sort_values("Avg Views per Day", ascending=False)
-                elif "Newest" in local_sort:
-                    preview_df = preview_df.sort_values("Published Date", ascending=False)
-
+                if "Engagement" in local_sort: preview_df = preview_df.sort_values("Like-to-View Ratio (%)", ascending=False)
+                elif "Views" in local_sort and "Daily" not in local_sort: preview_df = preview_df.sort_values("Views", ascending=False)
+                elif "Daily" in local_sort: preview_df = preview_df.sort_values("Avg Views per Day", ascending=False)
+                elif "Newest" in local_sort: preview_df = preview_df.sort_values("Published Date", ascending=False)
+                
                 # VIDEO GRID RENDER
                 grid_html = '<div class="video-grid">'
                 for row in preview_df.head(20).to_dict('records'):
@@ -415,16 +383,22 @@ def main():
                     dur_fmt = format_duration(row['Duration (Seconds)'])
                     time_ago = format_time_ago(row['Published Date'])
                     eng = row['Like-to-View Ratio (%)']
-
+                    
                     eng_badge = f'<span class="engagement-badge tooltip" data-tooltip="View to Like Ratio" style="background:#e6f4ea; color:#137333;">★ V/L: {eng}%</span>' if eng > 5 else f'<span class="tooltip" data-tooltip="View to Like Ratio" style="color:#70757a; font-size:11px;">V/L: {eng}%</span>'
-                    lang_html = f'<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Spoken Language"].upper()}</div>' if \
-                    row['Spoken Language'] != "N/A" else ""
+                    
+                    # Language Badge (conditional)
+                    lang_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Spoken Language"].upper()}</div>' if row['Spoken Language'] != "N/A" else ""
+                    # Category Badge
+                    cat_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Video Category"]}</div>'
 
                     grid_html += f"""
 <div class="video-card">
     <a href="{row['URL']}" target="_blank" class="thumbnail-container">
         <img src="{row['Thumbnail']}" alt="{row['Title']}">
-        {lang_html}
+        <div style="position:absolute; top:8px; right:8px; display:flex; flex-direction:column; gap:4px; align-items:flex-end; z-index:10;">
+            {lang_badge}
+            {cat_badge}
+        </div>
         <div class="rank-badge">#{row['Rank']}</div>
         <div class="duration-badge">{dur_fmt}</div>
     </a>
@@ -449,10 +423,10 @@ def main():
             with tab_channels:
                 channel_groups = df_full.groupby('Channel ID')
                 channel_data = []
-
+                
                 grand_total_res_views = df_full['Views'].sum()
                 grand_total_global_views = 0
-
+                
                 for cid, group in channel_groups:
                     first = group.iloc[0]
                     grand_total_global_views += first['Channel Total Views']
@@ -461,15 +435,15 @@ def main():
                     first = group.iloc[0]
                     total_res_views = int(group['Views'].sum())
                     avg_like_ratio = group['Like-to-View Ratio (%)'].mean()
-
+                    
                     subs = first['Channel Subscribers']
                     sub_val = int(subs) if isinstance(subs, str) and subs.isdigit() else 0
-
+                    
                     global_views = first['Channel Total Views']
-
+                    
                     sov_res = (total_res_views / grand_total_res_views * 100) if grand_total_res_views > 0 else 0
                     sov_glob = (global_views / grand_total_global_views * 100) if grand_total_global_views > 0 else 0
-
+                    
                     channel_data.append({
                         "Channel": first['Channel'],
                         "ID": cid,
@@ -484,13 +458,13 @@ def main():
                         "SoV Global": round(sov_glob, 2),
                         "Video List": group.head(6).to_dict('records')
                     })
-
+                
                 cdf = pd.DataFrame(channel_data)
-
+                
                 c_total = len(cdf)
                 c_subs_est = cdf["Sub_Val"].sum()
                 c_lifetime_views = cdf["Global_Views"].sum()
-
+                
                 st.markdown(f"""
                 <div style="background-color: #fce8e6; padding: 20px; border-radius: 12px; border: 1px solid #fad2cf; margin-bottom: 20px; color: #c5221f;">
                     <div style="font-size: 1.1rem; font-weight: 500; margin-bottom: 10px;">📢 Channel Overview</div>
@@ -506,31 +480,25 @@ def main():
                 with sort_col:
                     chan_sort = st.selectbox(
                         "Sort Channels By",
-                        ["Share of Voice (Results)", "Share of Voice (Global)", "Total Subscribers", "Lifetime Views",
-                         "Videos Found"],
+                        ["Share of Voice (Results)", "Share of Voice (Global)", "Total Subscribers", "Lifetime Views", "Videos Found"],
                         index=0,
                         key="channel_sort"
                     )
-
-                if "Results" in chan_sort:
-                    cdf = cdf.sort_values("Result_Views", ascending=False)
-                elif "Global" in chan_sort:
-                    cdf = cdf.sort_values("Global_Views", ascending=False)
-                elif "Subscribers" in chan_sort:
-                    cdf = cdf.sort_values("Sub_Val", ascending=False)
-                elif "Lifetime" in chan_sort:
-                    cdf = cdf.sort_values("Global_Views", ascending=False)
-                elif "Videos" in chan_sort:
-                    cdf = cdf.sort_values("Videos Found", ascending=False)
+                
+                if "Results" in chan_sort: cdf = cdf.sort_values("Result_Views", ascending=False)
+                elif "Global" in chan_sort: cdf = cdf.sort_values("Global_Views", ascending=False)
+                elif "Subscribers" in chan_sort: cdf = cdf.sort_values("Sub_Val", ascending=False)
+                elif "Lifetime" in chan_sort: cdf = cdf.sort_values("Global_Views", ascending=False)
+                elif "Videos" in chan_sort: cdf = cdf.sort_values("Videos Found", ascending=False)
 
                 for _, row in cdf.iterrows():
                     mini_grid_html = ""
                     for v in row['Video List']:
                         mini_grid_html += f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="display:block; width:100%; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:6px; aspect-ratio:16/9; object-fit:cover; opacity:0.95; transition:0.2s;"></a>'
-
+                    
                     logo = row['Logo'] if row['Logo'] else "https://cdn-icons-png.flaticon.com/512/847/847969.png"
-
-                    # Channel Card (Matching Video Grid Style)
+                    
+                    # Channel Card Render (No indentation)
                     card_html = f"""
 <div style="background:white; border:1px solid #e0e0e0; border-radius:16px; padding:20px; margin-bottom:24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s;">
     <div style="display:flex; align-items:center; gap:15px; border-bottom:1px solid #f1f3f4; padding-bottom:15px; margin-bottom:15px;">
@@ -562,7 +530,6 @@ def main():
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
-
 
 if __name__ == "__main__":
     main()
