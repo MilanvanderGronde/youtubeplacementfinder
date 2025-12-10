@@ -508,7 +508,8 @@ def main():
                         "Sort Channels By",
                         ["Share of Voice (Results)", "Share of Voice (Global)", "Total Subscribers", "Lifetime Views",
                          "Videos Found"],
-                        index=0
+                        index=0,
+                        key="channel_sort"
                     )
 
                 if "Results" in chan_sort:
@@ -529,7 +530,7 @@ def main():
 
                     logo = row['Logo'] if row['Logo'] else "https://cdn-icons-png.flaticon.com/512/847/847969.png"
 
-                    # Channel Card Render (No indentation)
+                    # Channel Card (Matching Video Grid Style)
                     card_html = f"""
 <div style="background:white; border:1px solid #e0e0e0; border-radius:16px; padding:20px; margin-bottom:24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s;">
     <div style="display:flex; align-items:center; gap:15px; border-bottom:1px solid #f1f3f4; padding-bottom:15px; margin-bottom:15px;">
