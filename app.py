@@ -266,8 +266,8 @@ def main():
     coffee_url = "https://buymeacoffee.com/youtubeplacementfinder"
     st.markdown(f"""
         <div class="creator-footer">
-            Created by <b>Milan van der Gronde</b> • 
-            <a href="{linkedin_url}" target="_blank">Let's Connect on LinkedIn 🔗</a>
+            <span>Created by <b>Milan van der Gronde</b></span> • 
+            <span><a href="{linkedin_url}" target="_blank">Let's Connect on LinkedIn 🔗</a></span>
             <span style="margin-left: 15px; padding-left: 15px; border-left: 1px solid #dadce0;">
                 <a href="{coffee_url}" target="_blank" style="text-decoration: none;">☕ Buy me a coffee</a>
             </span>
