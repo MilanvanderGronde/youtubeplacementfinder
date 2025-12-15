@@ -18,10 +18,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
 # --- CSS LOADER ---
 def load_css(file_name):
     with open(file_name) as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
 
 # --- HELPER FUNCTIONS ---
 def parse_duration(duration_iso):
@@ -35,6 +37,7 @@ def parse_duration(duration_iso):
     if seconds: total_seconds += int(seconds)
     return total_seconds
 
+
 def format_duration(seconds):
     if not seconds: return "0:00"
     m, s = divmod(seconds, 60)
@@ -42,22 +45,31 @@ def format_duration(seconds):
     if h > 0: return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
 
+
 def format_time_ago(date_str):
     try:
         pub_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         diff = now - pub_date
-        if diff.days == 0: return "Today"
-        elif diff.days == 1: return "Yesterday"
-        elif diff.days < 30: return f"{diff.days} days ago"
-        elif diff.days < 365: months = diff.days // 30; return f"{months} mo ago"
-        else: years = diff.days // 365; return f"{years} yr ago"
-    except: return date_str
+        if diff.days == 0:
+            return "Today"
+        elif diff.days == 1:
+            return "Yesterday"
+        elif diff.days < 30:
+            return f"{diff.days} days ago"
+        elif diff.days < 365:
+            months = diff.days // 30; return f"{months} mo ago"
+        else:
+            years = diff.days // 365; return f"{years} yr ago"
+    except:
+        return date_str
+
 
 def format_big_number(num):
     if num >= 1_000_000: return f"{num / 1_000_000:.1f}M"
     if num >= 1_000: return f"{num / 1_000:.0f}k"
     return str(num)
+
 
 # --- CACHED DATA FETCHING ---
 @st.cache_data(show_spinner=False)
@@ -68,8 +80,10 @@ def get_category_map(_youtube_service, region_code="US"):
         response = request.execute()
         for item in response.get("items", []):
             category_map[item["id"]] = item["snippet"]["title"]
-    except HttpError: pass
+    except HttpError:
+        pass
     return category_map
+
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def get_channel_stats(_youtube, channel_ids):
@@ -103,11 +117,14 @@ def get_channel_stats(_youtube, channel_ids):
                     "totalChannelViews": view_count,
                     "thumbnail": thumb_url
                 }
-        except HttpError: pass
+        except HttpError:
+            pass
     return channel_stats_map
 
+
 @st.cache_data(show_spinner=False, ttl=3600)
-def search_videos(_youtube, query, category_id, target_total, year, region_code, sort_order, relevance_language, video_duration, video_type):
+def search_videos(_youtube, query, category_id, target_total, year, region_code, sort_order, relevance_language,
+                  video_duration, video_type):
     all_videos = []
     next_page_token = None
     max_per_page = 50
@@ -136,15 +153,18 @@ def search_videos(_youtube, query, category_id, target_total, year, region_code,
 
             if not video_ids: break
 
-            video_response = _youtube.videos().list(part="snippet,statistics,contentDetails", id=",".join(video_ids)).execute()
+            video_response = _youtube.videos().list(part="snippet,statistics,contentDetails",
+                                                    id=",".join(video_ids)).execute()
             fetched_videos = video_response.get("items", [])
             for video in fetched_videos:
                 all_videos.append(video)
                 if len(all_videos) >= target_total: return all_videos[:target_total]
             next_page_token = search_response.get("nextPageToken")
             if not next_page_token: break
-    except HttpError as e: st.error(f"API Error: {e}")
+    except HttpError as e:
+        st.error(f"API Error: {e}")
     return all_videos
+
 
 # --- MAIN UI ---
 def main():
@@ -156,7 +176,7 @@ def main():
     # --- TRACKER: NEW VISIT & USER ID ---
     if 'visit_id' not in st.session_state:
         st.session_state.visit_id = str(uuid.uuid4())
-        # Log the new visit with the generated ID (This was the missing part!)
+        # Log the new visit with the generated ID
         log_usage(st.session_state.visit_id, "New Visit")
 
     st.title("🎯 ContextLab - Placement Finder")
@@ -175,7 +195,8 @@ def main():
         if not default_key:
             st.header("Credentials")
             st.markdown("👉 [**How to get an API Key?**](https://developers.google.com/youtube/v3/getting-started) 🔑")
-            api_key = st.text_input("YouTube API Key", type="password", help="Enter your YouTube Data API v3 Key from Google Cloud Console.")
+            api_key = st.text_input("YouTube API Key", type="password",
+                                    help="Enter your YouTube Data API v3 Key from Google Cloud Console.")
             if api_key: st.query_params["api_key"] = api_key
             st.divider()
         else:
@@ -189,8 +210,10 @@ def main():
         st.header("Targeting and Filtering")
 
         search_topic = st.text_input("Search Query", placeholder="", help="The main subject of the videos.")
-        is_broad = st.checkbox("Enable Broad Match", value=False, help="Uncheck for Exact Match (Recommended). Check to allow broader results.")
-        exclude_words = st.text_input("Exclude Queries", placeholder="", help="Words to exclude from results. We automatically add the minus sign.")
+        is_broad = st.checkbox("Enable Broad Match", value=False,
+                               help="Uncheck for Exact Match (Recommended). Check to allow broader results.")
+        exclude_words = st.text_input("Exclude Queries", placeholder="",
+                                      help="Words to exclude from results. We automatically add the minus sign.")
 
         final_query_parts = []
         if search_topic:
@@ -202,30 +225,37 @@ def main():
 
         country_names = sorted(list(ALL_COUNTRY_CODES.keys()))
         default_idx = country_names.index("United States") if "United States" in country_names else 0
-        selected_country = st.selectbox("Target Location", options=country_names, index=default_idx, help="Restricts results to videos viewable or trending in this country.")
+        selected_country = st.selectbox("Target Location", options=country_names, index=default_idx,
+                                        help="Restricts results to videos viewable or trending in this country.")
         selected_region_code = ALL_COUNTRY_CODES[selected_country]
 
-        selected_lang_label = st.selectbox("Language Bias", options=list(LANGUAGE_CODES.keys()), index=0, help="Tells YouTube to prioritize results in this language.")
+        selected_lang_label = st.selectbox("Language Bias", options=list(LANGUAGE_CODES.keys()), index=0,
+                                           help="Tells YouTube to prioritize results in this language.")
         selected_lang_code = LANGUAGE_CODES[selected_lang_label]
 
         try:
             youtube_temp = build("youtube", "v3", developerKey=api_key) if api_key else None
             cat_map = get_category_map(youtube_temp, region_code=selected_region_code) if youtube_temp else {}
-        except: cat_map = {}
+        except:
+            cat_map = {}
 
         name_to_id = {v: k for k, v in cat_map.items()}
         name_to_id["All Categories"] = "All"
         cat_options = ["All Categories"] + sorted([k for k in name_to_id.keys() if k != "All Categories"])
-        selected_cat_name = st.selectbox("Category", options=cat_options, index=0, help="Filter results to a specific YouTube category.")
+        selected_cat_name = st.selectbox("Category", options=cat_options, index=0,
+                                         help="Filter results to a specific YouTube category.")
         selected_cat_id = name_to_id.get(selected_cat_name, "All")
 
         duration_options = {"Any": "any", "Short (<4m)": "short", "Medium (4-20m)": "medium", "Long (>20m)": "long"}
-        selected_duration_label = st.selectbox("Duration", options=list(duration_options.keys()), index=0, help="Filter by video length.")
+        selected_duration_label = st.selectbox("Duration", options=list(duration_options.keys()), index=0,
+                                               help="Filter by video length.")
         selected_duration_code = duration_options[selected_duration_label]
 
-        year_input = st.text_input("Publish Year", value="", placeholder="All time (e.g. 2025)", help="Filter for videos published within a specific year.")
+        year_input = st.text_input("Publish Year", value="", placeholder="All time (e.g. 2025)",
+                                   help="Filter for videos published within a specific year.")
         year = int(year_input) if year_input.strip() and year_input.isdigit() else None
-        target_total = st.number_input("Max Results", min_value=1, max_value=1000, value=20, help="Maximum number of videos to retrieve.")
+        target_total = st.number_input("Max Results", min_value=1, max_value=1000, value=20,
+                                       help="Maximum number of videos to retrieve.")
 
     linkedin_url = "https://www.linkedin.com/in/milan-van-der-gronde-online-marketing-google-ads/"
     coffee_url = "https://buymeacoffee.com/youtubeplacementfinder"
@@ -256,6 +286,17 @@ def main():
                 log_df = get_logs()
                 if log_df is not None:
                     st.success("Admin Access Granted: Viewing Logs")
+
+                    # Convert to CSV for the button
+                    csv_logs = log_df.to_csv(index=False).encode('utf-8')
+
+                    st.download_button(
+                        label="📥 Download Log File",
+                        data=csv_logs,
+                        file_name="server_logs.csv",
+                        mime="text/csv"
+                    )
+
                     st.dataframe(log_df, use_container_width=True)
                     st.stop()
                 else:
@@ -275,10 +316,12 @@ def main():
 
                 # --- LOGGING WITH USER ID ---
                 if raw_videos:
-                     log_usage(st.session_state.visit_id, "Search Run", query=final_query_string, country=selected_country, result_count=len(raw_videos))
+                    log_usage(st.session_state.visit_id, "Search Run", query=final_query_string,
+                              country=selected_country, result_count=len(raw_videos))
 
                 if not raw_videos:
-                    log_usage(st.session_state.visit_id, "Search (No Results)", query=final_query_string, country=selected_country)
+                    log_usage(st.session_state.visit_id, "Search (No Results)", query=final_query_string,
+                              country=selected_country)
                     st.warning("No videos found matching criteria.")
                     return
 
@@ -384,8 +427,9 @@ def main():
                         )
                     with c2:
                         def on_dl_click():
-                             log_usage(st.session_state.visit_id, "Data Export", query=final_query_string, country=selected_country, result_count=len(df_full))
-                        
+                            log_usage(st.session_state.visit_id, "Data Export", query=final_query_string,
+                                      country=selected_country, result_count=len(df_full))
+
                         st.download_button(
                             "📥 Download Results (CSV)", csv_data, f"youtube_{meta_name}.csv", "text/csv",
                             type="primary", use_container_width=True, on_click=on_dl_click
@@ -427,7 +471,8 @@ def main():
                     eng = row['Like-to-View Ratio (%)']
 
                     eng_badge = f'<span class="engagement-badge tooltip" data-tooltip="View to Like Ratio" style="background:#e6f4ea; color:#137333;">★ V/L: {eng}%</span>' if eng > 5 else f'<span class="tooltip" data-tooltip="View to Like Ratio" style="color:#70757a; font-size:11px;">V/L: {eng}%</span>'
-                    lang_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Spoken Language"].upper()}</div>' if row['Spoken Language'] != "N/A" else ""
+                    lang_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Spoken Language"].upper()}</div>' if \
+                    row['Spoken Language'] != "N/A" else ""
                     cat_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Video Category"]}</div>'
 
                     grid_html += f"""
@@ -540,7 +585,9 @@ def main():
                     cdf = cdf.sort_values("Videos Found", ascending=False)
 
                 for _, row in cdf.iterrows():
-                    mini_grid_html = "".join([f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="flex: 0 0 160px; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:8px; aspect-ratio:16/9; object-fit:cover; border:1px solid #eee; transition: transform 0.2s;"></a>' for v in row['Video List']])
+                    mini_grid_html = "".join([
+                                                 f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="flex: 0 0 160px; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:8px; aspect-ratio:16/9; object-fit:cover; border:1px solid #eee; transition: transform 0.2s;"></a>'
+                                                 for v in row['Video List']])
 
                     logo = row['Logo'] if row['Logo'] else "https://cdn-icons-png.flaticon.com/512/847/847969.png"
 
