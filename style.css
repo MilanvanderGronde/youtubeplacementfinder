@@ -45,7 +45,7 @@ padding: 0px;
 
 .overViewDivChannelMetrics {
 border: none;
-gap: 1rem;
+gap: 0px!important;
 }
 .overViewDivChannelMetrics > div {
 border: none !important;
@@ -78,13 +78,18 @@ margin-top: 1rem!important;
 
 .channelCard > span {
     width: 100% !important;
-    display: inline-block;
-    margin-top: 0.5rem;
+    display: inline-block !important;
+    margin-top: 0.5rem !important;
+    0px 0px 0px 5px!important
 
 }
 .channelCard > span:nth-child(even) {
     display: none;
 }
+
+.creator-footer {
+font-size: 1rem!important;}
+
 }
 
 /* --- 1. HEADER CLEANUP (Surgical Hiding) --- */
