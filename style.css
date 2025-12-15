@@ -7,6 +7,86 @@ html, body, [class*="css"] {
     font-family: 'Roboto', sans-serif;
 }
 
+/* --- 0. Mobile fixes --- */
+
+
+@media (max-width: 700px) {
+
+.stSidebar {
+width: 100% !important;
+}
+.block-container {
+    padding: 0.5rem !important;
+}
+.overViewDiv {
+padding: 0.5rem !important;
+}
+.overViewDivMetrics {
+gap: 0px !important;
+}
+
+.overViewDivMetrics > div {
+margin: auto;
+border-left: 1px solid #1a73e8;
+border-right: 1px solid #1a73e8;
+padding: 0px 1rem 0px 1rem;
+}
+.overViewDivMetrics > div:nth-child(1) {
+margin-left: 0px;
+border: none;
+padding: 0px;
+}
+.overViewDivMetrics > div:nth-child(3) {
+margin-right: 0px;
+border: none;
+padding: 0px;
+}
+
+
+.overViewDivChannelMetrics {
+border: none;
+gap: 1rem;
+}
+.overViewDivChannelMetrics > div {
+border: none !important;
+gap: 0px !important;
+padding: 0px !important;
+}
+
+.channelResultsGrid {
+padding: 1rem !important;
+}
+.channelResultsGrid > div {
+display: inline-block !important;
+}
+
+.channelResultsGrid > div > a {
+font-size: 2rem !important;
+padding-left: 1rem !important;
+}
+
+.channelResultsGrid > div > img {
+width: 7rem !important;
+height: 7rem !important;
+}
+
+.channelCard {
+Display: inline-block!important;
+font-size: 1rem!important;
+margin-top: 1rem!important;
+}
+
+.channelCard > span {
+    width: 100% !important;
+    display: inline-block;
+    margin-top: 0.5rem;
+
+}
+.channelCard > span:nth-child(even) {
+    display: none;
+}
+}
+
 /* --- 1. HEADER CLEANUP (Surgical Hiding) --- */
 header {
     visibility: visible !important;
@@ -46,11 +126,7 @@ footer {
 [data-testid="stSidebarHeader"] {
     margin-bottom: 0rem !important;
 }
-@media (max-width: 700px) {
-.stSidebar {
-width: 100% !important;
-}
-}
+
 /* --- 3. LAYOUT --- */
 .block-container {
     padding-top: 2rem !important;
@@ -165,3 +241,11 @@ width: 100% !important;
 .mini-thumb:hover { opacity: 0.8; }
 
 [data-testid="stSidebarHeader"] {margin-bottom: 0rem!important;}
+.overViewDiv {background-color: #e8f0fe; padding: 20px; border-radius: 12px; border: 1px solid #d2e3fc; margin-bottom: 20px;}
+.overViewDivHeader {color: #1a73e8; font-size: 1.1rem; font-weight: 500; margin-bottom: 10px;}
+.overViewDivMetrics {display: flex; gap: 30px; align-items: center; flex-wrap: wrap;}
+.overViewDivMetrics > div {border-left: 1px solid #1a73e8; padding-left: 20px;}
+.channelCard {display:flex; flex-wrap:wrap; gap:15px; font-size:13px; color:#5f6368; margin-top:4px;}
+.channelResultsGrid {background:white; border:1px solid #e0e0e0; border-radius:16px; padding:20px; margin-bottom:24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s;}
+
+.channelResultsGrid > div {display:flex; align-items:center; gap:15px; border-bottom:1px solid #f1f3f4; padding-bottom:15px; margin-bottom:15px;}
