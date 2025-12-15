@@ -16,7 +16,7 @@ def log_usage(user_id, event_type, query="-", country="-", result_count=0, extra
 
         with open(LOG_FILE, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            # Write header if new file (Added User_ID column)
+            # Write header if new file
             if not file_exists:
                 writer.writerow(["Timestamp", "User_ID", "Event", "Query", "Country", "Result_Count", "Extra_Info"])
 
@@ -31,7 +31,12 @@ def log_usage(user_id, event_type, query="-", country="-", result_count=0, extra
 def get_logs():
     """
     Returns the log data as a Pandas DataFrame for the Admin view.
+    Handles corrupt lines gracefully.
     """
     if os.path.exists(LOG_FILE):
-        return pd.read_csv(LOG_FILE)
+        try:
+            # on_bad_lines='skip' prevents crashing if the file structure changed
+            return pd.read_csv(LOG_FILE, on_bad_lines='skip')
+        except Exception:
+            return None
     return None
