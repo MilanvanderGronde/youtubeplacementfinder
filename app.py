@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
 import re
+import uuid
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from datetime import datetime, timezone
-# --- IMPORT CONSTANTS ---
+
+# --- IMPORT MODULES ---
 from constants import ALL_COUNTRY_CODES, LANGUAGE_CODES
+from tracker import log_usage, get_logs  # <--- New Import
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -106,7 +109,7 @@ def get_channel_stats(_youtube, channel_ids):
                 thumb_url = thumbs.get("default", {}).get("url") or \
                             thumbs.get("medium", {}).get("url") or \
                             thumbs.get("high", {}).get("url") or \
-                            "https://cdn-icons-png.flaticon.com/512/847/847969.png"  # Fallback
+                            "https://cdn-icons-png.flaticon.com/512/847/847969.png"
 
                 channel_stats_map[channel_id] = {
                     "subscriberCount": sub_count,
@@ -143,7 +146,6 @@ def search_videos(_youtube, query, category_id, target_total, year, region_code,
 
             search_response = _youtube.search().list(**search_params).execute()
 
-            # Robust ID Extraction
             video_ids = []
             for item in search_response.get("items", []):
                 if "id" in item and "videoId" in item["id"] and item["id"]["videoId"]:
@@ -171,13 +173,17 @@ def main():
     except FileNotFoundError:
         st.error("style.css not found. Please create the file.")
 
+    # --- TRACKER: NEW VISIT ---
+    if 'visit_id' not in st.session_state:
+        st.session_state.visit_id = str(uuid.uuid4())
+        log_usage("New Visit")
+
     st.title("🎯 ContextLab - Placement Finder")
     st.markdown("""
     Relevance is key. Show your ads to the right audience, on the right videos, at the right time. 
     Use this tool to generate highly targeted placement lists for your YouTube campaigns and stop wasting budget on irrelevant placements.
     """)
 
-    # 1. Sidebar
     with st.sidebar:
         default_key = ""
         if "YOUTUBE_API_KEY" in st.secrets:
@@ -202,30 +208,19 @@ def main():
 
         st.header("Targeting and Filtering")
 
-        # --- RENAMED & RESTRUCTURED SEARCH INPUTS ---
-        search_topic = st.text_input("Search Query", placeholder="",
-                                     help="The main subject of the videos.")
-
-        # Checkbox now outside columns to ensure single-line width
+        search_topic = st.text_input("Search Query", placeholder="", help="The main subject of the videos.")
         is_broad = st.checkbox("Enable Broad Match", value=False,
                                help="Uncheck for Exact Match (Recommended). Check to allow broader results.")
-
         exclude_words = st.text_input("Exclude Queries", placeholder="",
                                       help="Words to exclude from results. We automatically add the minus sign.")
 
-        # --- BUILD FINAL QUERY ---
         final_query_parts = []
         if search_topic:
-            # Logic: If NOT broad, wrap in quotes. If broad, leave as is.
             final_query_parts.append(search_topic if is_broad else f'"{search_topic}"')
-
         if exclude_words:
-            # Logic: Split words and add '-' to each
             negatives = " ".join([f"-{w}" for w in exclude_words.split()])
             final_query_parts.append(negatives)
-
         final_query_string = " ".join(final_query_parts)
-        # -------------------------
 
         country_names = sorted(list(ALL_COUNTRY_CODES.keys()))
         default_idx = country_names.index("United States") if "United States" in country_names else 0
@@ -261,7 +256,6 @@ def main():
         target_total = st.number_input("Max Results", min_value=1, max_value=1000, value=20,
                                        help="Maximum number of videos to retrieve.")
 
-    # CREATOR FOOTER
     linkedin_url = "https://www.linkedin.com/in/milan-van-der-gronde-online-marketing-google-ads/"
     coffee_url = "https://buymeacoffee.com/youtubeplacementfinder"
     st.markdown(f"""
@@ -286,6 +280,18 @@ def main():
                 st.warning("Please enter a Search Query.")
                 return
 
+            # --- HIDDEN ADMIN: VIEW LOGS ---
+            if final_query_string.strip() == '"admin_view_logs"':
+                log_df = get_logs()  # Calling tracker.py
+                if log_df is not None:
+                    st.success("Admin Access Granted: Viewing Logs")
+                    st.dataframe(log_df, use_container_width=True)
+                    st.stop()
+                else:
+                    st.warning("No logs found yet.")
+                    st.stop()
+            # -------------------------------
+
             display_year = year if year else "All Time"
             lang_msg = f"in {selected_lang_label}" if selected_lang_code else ""
             with st.spinner(f"Searching for '{final_query_string}' in {selected_country} {lang_msg}..."):
@@ -296,9 +302,12 @@ def main():
                     selected_duration_code, 'any'
                 )
 
-                print(f"[DEBUG] Videos Found: {len(raw_videos)}")
+                if raw_videos:
+                    log_usage("Search Run", query=final_query_string, country=selected_country,
+                              result_count=len(raw_videos))
 
                 if not raw_videos:
+                    log_usage("Search (No Results)", query=final_query_string, country=selected_country)
                     st.warning("No videos found matching criteria.")
                     return
 
@@ -355,7 +364,6 @@ def main():
                     rank_counter += 1
 
                 st.session_state['df_full'] = pd.DataFrame(processed_data)
-                # Store constructed query for filename instead of just topic
                 safe_topic = re.sub(r'[^a-zA-Z0-9]', '_', search_topic)
                 st.session_state['search_meta'] = f"{safe_topic}_{selected_region_code}_{display_year}"
 
@@ -404,8 +412,14 @@ def main():
                             label_visibility="collapsed"
                         )
                     with c2:
-                        st.download_button("📥 Download Results (CSV)", csv_data, f"youtube_{meta_name}.csv", "text/csv",
-                                           type="primary", use_container_width=True)
+                        def on_dl_click():
+                            log_usage("Data Export", query=final_query_string, country=selected_country,
+                                      result_count=len(df_full))
+
+                        st.download_button(
+                            "📥 Download Results (CSV)", csv_data, f"youtube_{meta_name}.csv", "text/csv",
+                            type="primary", use_container_width=True, on_click=on_dl_click
+                        )
 
                 filtered_df = df_full.copy()
                 if "> 10k" in segment_filter:
@@ -443,8 +457,6 @@ def main():
                     eng = row['Like-to-View Ratio (%)']
 
                     eng_badge = f'<span class="engagement-badge tooltip" data-tooltip="View to Like Ratio" style="background:#e6f4ea; color:#137333;">★ V/L: {eng}%</span>' if eng > 5 else f'<span class="tooltip" data-tooltip="View to Like Ratio" style="color:#70757a; font-size:11px;">V/L: {eng}%</span>'
-
-                    # Badges Top Right
                     lang_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Spoken Language"].upper()}</div>' if \
                     row['Spoken Language'] != "N/A" else ""
                     cat_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Video Category"]}</div>'
@@ -556,9 +568,9 @@ def main():
                     cdf = cdf.sort_values("Videos Found", ascending=False)
 
                 for _, row in cdf.iterrows():
-                    mini_grid_html = ""
-                    for v in row['Video List']:
-                        mini_grid_html += f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="display:block; width:100%; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:6px; aspect-ratio:16/9; object-fit:cover; opacity:0.95; transition:0.2s;"></a>'
+                    mini_grid_html = "".join([
+                                                 f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="flex: 0 0 160px; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:8px; aspect-ratio:16/9; object-fit:cover; border:1px solid #eee; transition: transform 0.2s;"></a>'
+                                                 for v in row['Video List']])
 
                     logo = row['Logo'] if row['Logo'] else "https://cdn-icons-png.flaticon.com/512/847/847969.png"
 
@@ -586,9 +598,7 @@ def main():
             </div>
         </div>
     </div>
-    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap:10px;">
-        {mini_grid_html}
-    </div>
+    <div style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin;">{mini_grid_html}</div>
 </div>"""
                     st.markdown(card_html, unsafe_allow_html=True)
 
