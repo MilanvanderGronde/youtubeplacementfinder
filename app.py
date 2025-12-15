@@ -375,12 +375,12 @@ def main():
             with tab_videos:
                 with st.container():
                     st.markdown(f"""
-                    <div style="background-color: #e8f0fe; padding: 20px; border-radius: 12px; border: 1px solid #d2e3fc; margin-bottom: 20px;">
-                        <div style="color: #1a73e8; font-size: 1.1rem; font-weight: 500; margin-bottom: 10px;">🔍 Overview</div>
-                        <div style="display: flex; gap: 30px; align-items: center; flex-wrap: wrap;">
+                    <div class="overViewDiv">
+                        <div class="overViewDivHeader">🔍 Overview</div>
+                        <div class="overViewDivMetrics">
                             <div><b>{total_vids}</b> Videos</div>
-                            <div style="border-left: 1px solid #1a73e8; padding-left: 20px;"><b>{format_big_number(total_views)}</b> Views</div>
-                            <div style="border-left: 1px solid #1a73e8; padding-left: 20px;"><b>{format_big_number(total_daily)}</b> Daily Views</div>
+                            <div><b>{format_big_number(total_views)}</b> Views</div>
+                            <div><b>{format_big_number(total_daily)}</b> Daily Views</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -524,9 +524,9 @@ def main():
                 c_lifetime_views = cdf["Global_Views"].sum()
 
                 st.markdown(f"""
-                <div style="background-color: #fce8e6; padding: 20px; border-radius: 12px; border: 1px solid #fad2cf; margin-bottom: 20px; color: #c5221f;">
+                <div class="overViewDiv" style="background-color: #fce8e6; color: #c5221f;">
                     <div style="font-size: 1.1rem; font-weight: 500; margin-bottom: 10px;">📢 Channel Overview</div>
-                    <div style="display: flex; gap: 30px; align-items: center; flex-wrap: wrap;">
+                    <div class="overViewDivChannelMetrics" style="display: flex; gap: 30px; align-items: center; flex-wrap: wrap;">
                         <div><b>{c_total}</b> Unique Channels</div>
                         <div style="border-left: 1px solid #c5221f; padding-left: 20px;"><b>{format_big_number(c_lifetime_views)}</b> Total Channel Views (Lifetime)</div>
                         <div style="border-left: 1px solid #c5221f; padding-left: 20px;"><b>{format_big_number(c_subs_est)}+</b> Total Subscribers</div>
@@ -564,12 +564,12 @@ def main():
 
                     # Channel Card Render
                     card_html = f"""
-<div style="background:white; border:1px solid #e0e0e0; border-radius:16px; padding:20px; margin-bottom:24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s;">
-    <div style="display:flex; align-items:center; gap:15px; border-bottom:1px solid #f1f3f4; padding-bottom:15px; margin-bottom:15px;">
+<div class="channelResultsGrid">
+    <div>
         <img src="{logo}" style="width:50px; height:50px; border-radius:50%; object-fit:cover; border:1px solid #eee;">
+        <a href="https://www.youtube.com/channel/{row['ID']}" target="_blank" style="font-size:18px; font-weight:600; color:#202124; text-decoration:none;">{row['Channel']}</a> 
         <div style="flex-grow:1;">
-            <a href="https://www.youtube.com/channel/{row['ID']}" target="_blank" style="font-size:18px; font-weight:600; color:#202124; text-decoration:none;">{row['Channel']}</a>
-            <div style="display:flex; flex-wrap:wrap; gap:15px; font-size:13px; color:#5f6368; margin-top:4px;">
+            <div class="channelCard">
                 <span><b>{row['Subscribers']}</b> Subs</span>
                 <span style="color:#dadce0;">|</span>
                 <span><b>{format_big_number(row['Global_Views'])}</b> Ch. Views</span>
