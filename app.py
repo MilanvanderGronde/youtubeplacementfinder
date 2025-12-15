@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 # --- IMPORT MODULES ---
 from constants import ALL_COUNTRY_CODES, LANGUAGE_CODES
-from tracker import log_usage, get_logs  # <--- New Import
+from tracker import log_usage, get_logs
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -173,10 +173,11 @@ def main():
     except FileNotFoundError:
         st.error("style.css not found. Please create the file.")
 
-    # --- TRACKER: NEW VISIT ---
+    # --- TRACKER: NEW VISIT & USER ID ---
     if 'visit_id' not in st.session_state:
         st.session_state.visit_id = str(uuid.uuid4())
-        log_usage("New Visit")
+        # Log the new visit with the generated ID
+        log_usage(st.session_state.visit_id, "New Visit")
 
     st.title("🎯 ContextLab - Placement Finder")
     st.markdown("""
@@ -282,7 +283,7 @@ def main():
 
             # --- HIDDEN ADMIN: VIEW LOGS ---
             if final_query_string.strip() == '"admin_view_logs"':
-                log_df = get_logs()  # Calling tracker.py
+                log_df = get_logs()
                 if log_df is not None:
                     st.success("Admin Access Granted: Viewing Logs")
                     st.dataframe(log_df, use_container_width=True)
@@ -302,12 +303,14 @@ def main():
                     selected_duration_code, 'any'
                 )
 
+                # --- LOGGING ---
                 if raw_videos:
-                    log_usage("Search Run", query=final_query_string, country=selected_country,
-                              result_count=len(raw_videos))
+                    log_usage(st.session_state.visit_id, "Search Run", query=final_query_string,
+                              country=selected_country, result_count=len(raw_videos))
 
                 if not raw_videos:
-                    log_usage("Search (No Results)", query=final_query_string, country=selected_country)
+                    log_usage(st.session_state.visit_id, "Search (No Results)", query=final_query_string,
+                              country=selected_country)
                     st.warning("No videos found matching criteria.")
                     return
 
@@ -413,8 +416,8 @@ def main():
                         )
                     with c2:
                         def on_dl_click():
-                            log_usage("Data Export", query=final_query_string, country=selected_country,
-                                      result_count=len(df_full))
+                            log_usage(st.session_state.visit_id, "Data Export", query=final_query_string,
+                                      country=selected_country, result_count=len(df_full))
 
                         st.download_button(
                             "📥 Download Results (CSV)", csv_data, f"youtube_{meta_name}.csv", "text/csv",
@@ -514,6 +517,9 @@ def main():
                     sov_res = (total_res_views / grand_total_res_views * 100) if grand_total_res_views > 0 else 0
                     sov_glob = (global_views / grand_total_global_views * 100) if grand_total_global_views > 0 else 0
 
+                    # Sort videos by view count for the mini-slider
+                    sorted_group = group.sort_values(by="Views", ascending=False)
+
                     channel_data.append({
                         "Channel": first['Channel'],
                         "ID": cid,
@@ -526,7 +532,7 @@ def main():
                         "Videos Found": len(group),
                         "SoV Results": round(sov_res, 2),
                         "SoV Global": round(sov_glob, 2),
-                        "Video List": group.head(6).to_dict('records')
+                        "Video List": sorted_group.to_dict('records')
                     })
 
                 cdf = pd.DataFrame(channel_data)
