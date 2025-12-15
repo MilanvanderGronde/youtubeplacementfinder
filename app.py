@@ -101,11 +101,12 @@ def get_channel_stats(_youtube, channel_ids):
                 sub_count = stats.get("subscriberCount", "N/A")
                 view_count = int(stats.get("viewCount", 0))
 
+                # Robust Image Fetch
                 thumbs = snippet.get("thumbnails", {})
                 thumb_url = thumbs.get("default", {}).get("url") or \
                             thumbs.get("medium", {}).get("url") or \
                             thumbs.get("high", {}).get("url") or \
-                            "https://cdn-icons-png.flaticon.com/512/847/847969.png"
+                            "https://cdn-icons-png.flaticon.com/512/847/847969.png"  # Fallback
 
                 channel_stats_map[channel_id] = {
                     "subscriberCount": sub_count,
@@ -142,10 +143,9 @@ def search_videos(_youtube, query, category_id, target_total, year, region_code,
 
             search_response = _youtube.search().list(**search_params).execute()
 
-            # --- FIX: Robust ID Extraction to prevent "Invalid Filter Parameter" (Empty/None IDs) ---
+            # Robust ID Extraction
             video_ids = []
             for item in search_response.get("items", []):
-                # Ensure 'id' exists and 'videoId' is not empty/None
                 if "id" in item and "videoId" in item["id"] and item["id"]["videoId"]:
                     video_ids.append(item["id"]["videoId"])
 
@@ -202,23 +202,30 @@ def main():
 
         st.header("Targeting and Filtering")
 
-        with st.expander("🛠️ Query Builder"):
-            st.caption("Construct complex queries easily.")
-            qb_includes = st.text_input("Contains words", placeholder="e.g. boat sailing")
-            qb_exact = st.text_input("Exact phrase", placeholder="e.g. Google Ads")
-            qb_excludes = st.text_input("Exclude words", placeholder="e.g. roblox game")
+        # --- RENAMED & RESTRUCTURED SEARCH INPUTS ---
+        search_topic = st.text_input("Search Query", placeholder="",
+                                     help="The main subject of the videos.")
 
-            if st.button("Apply to Search"):
-                parts = []
-                if qb_includes: parts.append(qb_includes)
-                if qb_exact: parts.append(f'"{qb_exact}"')
-                if qb_excludes: parts.append(" ".join([f"-{w}" for w in qb_excludes.split()]))
-                st.session_state.search_query = " ".join(parts)
-                st.rerun()
+        # Checkbox now outside columns to ensure single-line width
+        is_broad = st.checkbox("Enable Broad Match", value=False,
+                               help="Uncheck for Exact Match (Recommended). Check to allow broader results.")
 
-        if "search_query" not in st.session_state: st.session_state.search_query = ""
-        query = st.text_input("Search Query", key="search_query",
-                              help="Main topic (e.g. 'Colosseum tours'). Use quotes \"...\" for exact match, | for OR, and - for NOT.")
+        exclude_words = st.text_input("Exclude Queries", placeholder="",
+                                      help="Words to exclude from results. We automatically add the minus sign.")
+
+        # --- BUILD FINAL QUERY ---
+        final_query_parts = []
+        if search_topic:
+            # Logic: If NOT broad, wrap in quotes. If broad, leave as is.
+            final_query_parts.append(search_topic if is_broad else f'"{search_topic}"')
+
+        if exclude_words:
+            # Logic: Split words and add '-' to each
+            negatives = " ".join([f"-{w}" for w in exclude_words.split()])
+            final_query_parts.append(negatives)
+
+        final_query_string = " ".join(final_query_parts)
+        # -------------------------
 
         country_names = sorted(list(ALL_COUNTRY_CODES.keys()))
         default_idx = country_names.index("United States") if "United States" in country_names else 0
@@ -275,15 +282,21 @@ def main():
         youtube = build("youtube", "v3", developerKey=api_key)
 
         if st.button("🚀 Run Search", type="primary"):
+            if not final_query_string.strip():
+                st.warning("Please enter a Search Query.")
+                return
+
             display_year = year if year else "All Time"
             lang_msg = f"in {selected_lang_label}" if selected_lang_code else ""
-            with st.spinner(f"Searching for '{query}' in {selected_country} {lang_msg}..."):
+            with st.spinner(f"Searching for '{final_query_string}' in {selected_country} {lang_msg}..."):
 
                 raw_videos = search_videos(
-                    youtube, query, selected_cat_id, target_total, year,
+                    youtube, final_query_string, selected_cat_id, target_total, year,
                     selected_region_code, 'relevance', selected_lang_code,
                     selected_duration_code, 'any'
                 )
+
+                print(f"[DEBUG] Videos Found: {len(raw_videos)}")
 
                 if not raw_videos:
                     st.warning("No videos found matching criteria.")
@@ -342,7 +355,9 @@ def main():
                     rank_counter += 1
 
                 st.session_state['df_full'] = pd.DataFrame(processed_data)
-                st.session_state['search_meta'] = f"{query}_{selected_region_code}_{display_year}"
+                # Store constructed query for filename instead of just topic
+                safe_topic = re.sub(r'[^a-zA-Z0-9]', '_', search_topic)
+                st.session_state['search_meta'] = f"{safe_topic}_{selected_region_code}_{display_year}"
 
         if 'df_full' in st.session_state:
             df_full = st.session_state['df_full']
@@ -547,6 +562,7 @@ def main():
 
                     logo = row['Logo'] if row['Logo'] else "https://cdn-icons-png.flaticon.com/512/847/847969.png"
 
+                    # Channel Card Render
                     card_html = f"""
 <div style="background:white; border:1px solid #e0e0e0; border-radius:16px; padding:20px; margin-bottom:24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s;">
     <div style="display:flex; align-items:center; gap:15px; border-bottom:1px solid #f1f3f4; padding-bottom:15px; margin-bottom:15px;">
