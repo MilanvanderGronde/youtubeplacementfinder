@@ -250,6 +250,7 @@ footer {
 .overViewDivHeader {color: #1a73e8; font-size: 1.1rem; font-weight: 500; margin-bottom: 10px;}
 .overViewDivMetrics {display: flex; gap: 30px; align-items: center; flex-wrap: wrap;}
 .overViewDivMetrics > div {border-left: 1px solid #1a73e8; padding-left: 20px;}
+.overViewDivMetrics > div:nth-child(1): border: none!important;
 .channelCard {display:flex; flex-wrap:wrap; gap:15px; font-size:13px; color:#5f6368; margin-top:4px;}
 .channelResultsGrid {background:white; border:1px solid #e0e0e0; border-radius:16px; padding:20px; margin-bottom:24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s;}
 
