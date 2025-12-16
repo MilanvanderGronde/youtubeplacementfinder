@@ -254,7 +254,7 @@ def main():
         year_input = st.text_input("Publish Year", value="", placeholder="All time (e.g. 2025)",
                                    help="Filter for videos published within a specific year.")
         year = int(year_input) if year_input.strip() and year_input.isdigit() else None
-        target_total = st.number_input("Max Results", min_value=1, max_value=1000, value=20,
+        target_total = st.number_input("Max Results", min_value=1, max_value=100, value=20,
                                        help="Maximum number of videos to retrieve.")
 
     linkedin_url = "https://www.linkedin.com/in/milan-van-der-gronde-online-marketing-google-ads/"
