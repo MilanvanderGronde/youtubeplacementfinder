@@ -122,16 +122,18 @@ def get_channel_stats(_youtube, channel_ids):
     return channel_stats_map
 
 
+# --- CORE SEARCH LOGIC WITH STRICT FILTERING ---
 @st.cache_data(show_spinner=False, ttl=3600)
-def search_videos(_youtube, query, category_id, target_total, year, region_code, sort_order, relevance_language,
-                  video_duration, video_type):
+def search_videos(_youtube, query, include_cat_ids, exclude_cat_ids, exclude_words_list, target_total, year,
+                  region_code, sort_order, relevance_language, video_duration, video_type):
     all_videos = []
     next_page_token = None
     max_per_page = 50
-    pages_to_fetch = (target_total + max_per_page - 1) // max_per_page
+    # Fetch extra pages to compensate for strict filtering dropping videos
+    max_pages_to_fetch = (target_total // 5) + 5
 
     try:
-        for i in range(pages_to_fetch):
+        for i in range(max_pages_to_fetch):
             search_params = {
                 'part': 'snippet', 'q': query, 'type': 'video', 'order': sort_order,
                 'maxResults': max_per_page, 'pageToken': next_page_token, 'regionCode': region_code
@@ -142,7 +144,11 @@ def search_videos(_youtube, query, category_id, target_total, year, region_code,
             if year:
                 search_params['publishedAfter'] = f"{year}-01-01T00:00:00Z"
                 search_params['publishedBefore'] = f"{int(year) + 1}-01-01T00:00:00Z"
-            if category_id and category_id != "All": search_params['videoCategoryId'] = category_id
+
+            # --- OPTIMIZATION: USE API FILTER IF ONLY 1 CATEGORY SELECTED ---
+            # The API only accepts 1 ID. If user selected exactly 1, use it to save quota/time.
+            if len(include_cat_ids) == 1:
+                search_params['videoCategoryId'] = include_cat_ids[0]
 
             search_response = _youtube.search().list(**search_params).execute()
 
@@ -156,11 +162,38 @@ def search_videos(_youtube, query, category_id, target_total, year, region_code,
             video_response = _youtube.videos().list(part="snippet,statistics,contentDetails",
                                                     id=",".join(video_ids)).execute()
             fetched_videos = video_response.get("items", [])
+
             for video in fetched_videos:
+                # --- 1. STRICT TEXT EXCLUSION (Fixes "Dropshipping" leak) ---
+                title = video['snippet']['title'].lower()
+                description = video['snippet'].get('description', '').lower()
+                is_excluded_text = False
+
+                for word in exclude_words_list:
+                    if word.lower() in title or word.lower() in description:
+                        is_excluded_text = True
+                        break
+
+                if is_excluded_text:
+                    continue  # SKIP this video, do not add it.
+
+                # --- 2. STRICT CATEGORY FILTERING (MULTI-SELECT) ---
+                vid_cat = video['snippet'].get('categoryId')
+
+                # Exclude Logic
+                if vid_cat in exclude_cat_ids:
+                    continue
+
+                # Include Logic (If multiple categories selected)
+                if include_cat_ids and vid_cat not in include_cat_ids:
+                    continue
+
                 all_videos.append(video)
                 if len(all_videos) >= target_total: return all_videos[:target_total]
+
             next_page_token = search_response.get("nextPageToken")
             if not next_page_token: break
+
     except HttpError as e:
         st.error(f"API Error: {e}")
     return all_videos
@@ -176,7 +209,6 @@ def main():
     # --- TRACKER: NEW VISIT & USER ID ---
     if 'visit_id' not in st.session_state:
         st.session_state.visit_id = str(uuid.uuid4())
-        # Log the new visit with the generated ID
         log_usage(st.session_state.visit_id, "New Visit")
 
     st.title("🎯 ContextLab - Placement Finder")
@@ -212,15 +244,22 @@ def main():
         search_topic = st.text_input("Search Query", placeholder="", help="The main subject of the videos.")
         is_broad = st.checkbox("Enable Broad Match", value=False,
                                help="Uncheck for Exact Match (Recommended). Check to allow broader results.")
-        exclude_words = st.text_input("Exclude Queries", placeholder="",
-                                      help="Words to exclude from results. We automatically add the minus sign.")
+        exclude_words_input = st.text_input("Exclude Queries", placeholder="",
+                                            help="Words to exclude from results (e.g. 'dropshipping').")
+
+        # Create a list of words to strictly exclude in Python
+        exclude_words_list = [w.strip() for w in exclude_words_input.split() if w.strip()]
 
         final_query_parts = []
         if search_topic:
             final_query_parts.append(search_topic if is_broad else f'"{search_topic}"')
-        if exclude_words:
-            negatives = " ".join([f"-{w}" for w in exclude_words.split()])
+
+        # We still add negatives to the API query to reduce junk,
+        # but we rely on the strict Python filter to do the real work.
+        if exclude_words_input:
+            negatives = " ".join([f"-{w}" for w in exclude_words_list])
             final_query_parts.append(negatives)
+
         final_query_string = " ".join(final_query_parts)
 
         country_names = sorted(list(ALL_COUNTRY_CODES.keys()))
@@ -240,11 +279,25 @@ def main():
             cat_map = {}
 
         name_to_id = {v: k for k, v in cat_map.items()}
-        name_to_id["All Categories"] = "All"
-        cat_options = ["All Categories"] + sorted([k for k in name_to_id.keys() if k != "All Categories"])
-        selected_cat_name = st.selectbox("Category", options=cat_options, index=0,
-                                         help="Filter results to a specific YouTube category.")
-        selected_cat_id = name_to_id.get(selected_cat_name, "All")
+
+        # --- MULTI-SELECT CATEGORIES ---
+        clean_cat_options = sorted([k for k in name_to_id.keys()])
+
+        selected_cat_names = st.multiselect(
+            "Include Categories",
+            options=clean_cat_options,
+            default=[],
+            help="Leave empty to search ALL categories. Select multiple to broaden search."
+        )
+        include_cat_ids = [name_to_id[n] for n in selected_cat_names]
+
+        exclude_cat_names = st.multiselect(
+            "Exclude Categories",
+            options=clean_cat_options,
+            default=[],
+            help="Videos from these categories will be removed."
+        )
+        exclude_cat_ids = [name_to_id[n] for n in exclude_cat_names]
 
         duration_options = {"Any": "any", "Short (<4m)": "short", "Medium (4-20m)": "medium", "Long (>20m)": "long"}
         selected_duration_label = st.selectbox("Duration", options=list(duration_options.keys()), index=0,
@@ -254,7 +307,7 @@ def main():
         year_input = st.text_input("Publish Year", value="", placeholder="All time (e.g. 2025)",
                                    help="Filter for videos published within a specific year.")
         year = int(year_input) if year_input.strip() and year_input.isdigit() else None
-        target_total = st.number_input("Max Results", min_value=1, max_value=100, value=20,
+        target_total = st.number_input("Max Results", min_value=1, max_value=1000, value=20,
                                        help="Maximum number of videos to retrieve.")
 
     linkedin_url = "https://www.linkedin.com/in/milan-van-der-gronde-online-marketing-google-ads/"
@@ -286,17 +339,13 @@ def main():
                 log_df = get_logs()
                 if log_df is not None:
                     st.success("Admin Access Granted: Viewing Logs")
-
-                    # Convert to CSV for the button
                     csv_logs = log_df.to_csv(index=False).encode('utf-8')
-
                     st.download_button(
                         label="📥 Download Log File",
                         data=csv_logs,
                         file_name="server_logs.csv",
                         mime="text/csv"
                     )
-
                     st.dataframe(log_df, use_container_width=True)
                     st.stop()
                 else:
@@ -309,9 +358,11 @@ def main():
             with st.spinner(f"Searching for '{final_query_string}' in {selected_country} {lang_msg}..."):
 
                 raw_videos = search_videos(
-                    youtube, final_query_string, selected_cat_id, target_total, year,
-                    selected_region_code, 'relevance', selected_lang_code,
-                    selected_duration_code, 'any'
+                    youtube, final_query_string,
+                    include_cat_ids, exclude_cat_ids,  # <--- Passing lists now
+                    exclude_words_list,
+                    target_total, year, selected_region_code, 'relevance',
+                    selected_lang_code, selected_duration_code, 'any'
                 )
 
                 # --- LOGGING WITH USER ID ---
@@ -472,7 +523,7 @@ def main():
 
                     eng_badge = f'<span class="engagement-badge tooltip" data-tooltip="View to Like Ratio" style="background:#e6f4ea; color:#137333;">★ V/L: {eng}%</span>' if eng > 5 else f'<span class="tooltip" data-tooltip="View to Like Ratio" style="color:#70757a; font-size:11px;">V/L: {eng}%</span>'
                     lang_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Spoken Language"].upper()}</div>' if \
-                    row['Spoken Language'] != "N/A" else ""
+                        row['Spoken Language'] != "N/A" else ""
                     cat_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Video Category"]}</div>'
 
                     grid_html += f"""
@@ -586,8 +637,8 @@ def main():
 
                 for _, row in cdf.iterrows():
                     mini_grid_html = "".join([
-                                                 f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="flex: 0 0 160px; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:8px; aspect-ratio:16/9; object-fit:cover; border:1px solid #eee; transition: transform 0.2s;"></a>'
-                                                 for v in row['Video List']])
+                        f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="flex: 0 0 160px; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:8px; aspect-ratio:16/9; object-fit:cover; border:1px solid #eee; transition: transform 0.2s;"></a>'
+                        for v in row['Video List']])
 
                     logo = row['Logo'] if row['Logo'] else "https://cdn-icons-png.flaticon.com/512/847/847969.png"
 
