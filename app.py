@@ -398,7 +398,7 @@ def main():
                 with st.container():
                     st.markdown(f"""
                     <div class="overViewDiv">
-                        <div class="overViewDivHeader">🔍 Overview</div>
+                        <div class="overViewDivHeader">🔍 Overview for search: {final_query_string}</div>
                         <div class="overViewDivMetrics">
                             <div><b>{total_vids}</b> Videos</div>
                             <div><b>{format_big_number(total_views)}</b> Views</div>
