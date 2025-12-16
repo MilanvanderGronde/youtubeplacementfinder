@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 # --- IMPORT MODULES ---
 from constants import ALL_COUNTRY_CODES, LANGUAGE_CODES
-from tracker import log_usage, get_logs
+from tracker import log_usage, get_logs, estimate_daily_usage
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -87,15 +87,24 @@ def get_category_map(_youtube_service, region_code="US"):
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def get_channel_stats(_youtube, channel_ids):
-    if not channel_ids: return {}
+    """
+    Returns (channel_stats_map, quota_cost)
+    """
+    if not channel_ids: return {}, 0
+
     channel_stats_map = {}
     unique_ids_list = list(channel_ids)
+    quota_cost = 0
 
+    # Batch calls (50 IDs per call)
     for i in range(0, len(unique_ids_list), 50):
         batch_ids = unique_ids_list[i:i + 50]
         try:
+            # API Call: channels.list costs 1 unit
             request = _youtube.channels().list(part="statistics,snippet", id=",".join(batch_ids))
             response = request.execute()
+            quota_cost += 1
+
             for item in response.get("items", []):
                 channel_id = item["id"]
                 stats = item.get("statistics", {})
@@ -104,7 +113,6 @@ def get_channel_stats(_youtube, channel_ids):
                 sub_count = stats.get("subscriberCount", "N/A")
                 view_count = int(stats.get("viewCount", 0))
 
-                # Robust Image Fetch
                 thumbs = snippet.get("thumbnails", {})
                 thumb_url = thumbs.get("default", {}).get("url") or \
                             thumbs.get("medium", {}).get("url") or \
@@ -119,18 +127,22 @@ def get_channel_stats(_youtube, channel_ids):
                 }
         except HttpError:
             pass
-    return channel_stats_map
+
+    return channel_stats_map, quota_cost
 
 
-# --- CORE SEARCH LOGIC WITH STRICT FILTERING ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def search_videos(_youtube, query, include_cat_ids, exclude_cat_ids, exclude_words_list, target_total, year,
                   region_code, sort_order, relevance_language, video_duration, video_type):
+    """
+    Returns (all_videos, quota_cost)
+    """
     all_videos = []
     next_page_token = None
     max_per_page = 50
-    # Fetch extra pages to compensate for strict filtering dropping videos
     max_pages_to_fetch = (target_total // 5) + 5
+
+    quota_cost = 0
 
     try:
         for i in range(max_pages_to_fetch):
@@ -145,12 +157,12 @@ def search_videos(_youtube, query, include_cat_ids, exclude_cat_ids, exclude_wor
                 search_params['publishedAfter'] = f"{year}-01-01T00:00:00Z"
                 search_params['publishedBefore'] = f"{int(year) + 1}-01-01T00:00:00Z"
 
-            # --- OPTIMIZATION: USE API FILTER IF ONLY 1 CATEGORY SELECTED ---
-            # The API only accepts 1 ID. If user selected exactly 1, use it to save quota/time.
             if len(include_cat_ids) == 1:
                 search_params['videoCategoryId'] = include_cat_ids[0]
 
+            # API Call: search.list costs 100 units
             search_response = _youtube.search().list(**search_params).execute()
+            quota_cost += 100
 
             video_ids = []
             for item in search_response.get("items", []):
@@ -159,12 +171,15 @@ def search_videos(_youtube, query, include_cat_ids, exclude_cat_ids, exclude_wor
 
             if not video_ids: break
 
+            # API Call: videos.list costs 1 unit
             video_response = _youtube.videos().list(part="snippet,statistics,contentDetails",
                                                     id=",".join(video_ids)).execute()
+            quota_cost += 1
+
             fetched_videos = video_response.get("items", [])
 
             for video in fetched_videos:
-                # --- 1. STRICT TEXT EXCLUSION (Fixes "Dropshipping" leak) ---
+                # --- Strict Filtering ---
                 title = video['snippet']['title'].lower()
                 description = video['snippet'].get('description', '').lower()
                 is_excluded_text = False
@@ -173,30 +188,22 @@ def search_videos(_youtube, query, include_cat_ids, exclude_cat_ids, exclude_wor
                     if word.lower() in title or word.lower() in description:
                         is_excluded_text = True
                         break
+                if is_excluded_text: continue
 
-                if is_excluded_text:
-                    continue  # SKIP this video, do not add it.
-
-                # --- 2. STRICT CATEGORY FILTERING (MULTI-SELECT) ---
                 vid_cat = video['snippet'].get('categoryId')
-
-                # Exclude Logic
-                if vid_cat in exclude_cat_ids:
-                    continue
-
-                # Include Logic (If multiple categories selected)
-                if include_cat_ids and vid_cat not in include_cat_ids:
-                    continue
+                if vid_cat in exclude_cat_ids: continue
+                if include_cat_ids and vid_cat not in include_cat_ids: continue
 
                 all_videos.append(video)
-                if len(all_videos) >= target_total: return all_videos[:target_total]
+                if len(all_videos) >= target_total: return all_videos[:target_total], quota_cost
 
             next_page_token = search_response.get("nextPageToken")
             if not next_page_token: break
 
     except HttpError as e:
         st.error(f"API Error: {e}")
-    return all_videos
+
+    return all_videos, quota_cost
 
 
 # --- MAIN UI ---
@@ -206,10 +213,9 @@ def main():
     except FileNotFoundError:
         st.error("style.css not found. Please create the file.")
 
-    # --- TRACKER: NEW VISIT & USER ID ---
     if 'visit_id' not in st.session_state:
         st.session_state.visit_id = str(uuid.uuid4())
-        log_usage(st.session_state.visit_id, "New Visit")
+        log_usage(st.session_state.visit_id, "New Visit", quota_units=0)
 
     st.title("🎯 ContextLab - Placement Finder")
     st.markdown("""
@@ -218,27 +224,40 @@ def main():
     """)
 
     with st.sidebar:
-        default_key = ""
-        if "YOUTUBE_API_KEY" in st.secrets:
-            default_key = st.secrets["YOUTUBE_API_KEY"]
-        elif "api_key" in st.query_params:
-            default_key = st.query_params["api_key"]
+        st.header("Credentials")
 
-        if not default_key:
-            st.header("Credentials")
-            st.markdown("👉 [**How to get an API Key?**](https://developers.google.com/youtube/v3/getting-started) 🔑")
-            api_key = st.text_input("YouTube API Key", type="password",
-                                    help="Enter your YouTube Data API v3 Key from Google Cloud Console.")
-            if api_key: st.query_params["api_key"] = api_key
-            st.divider()
+        use_shared_key = st.checkbox("Use Shared Key (Free)", value=False, help="Check this to use the hosted API key.")
+        api_key = ""
+
+        if use_shared_key:
+            if "YOUTUBE_API_KEY" in st.secrets:
+                api_key = st.secrets["YOUTUBE_API_KEY"]
+
+                # --- QUOTA DISPLAY ---
+                usage_pct, used_units = estimate_daily_usage()
+                st.info(f"ℹ️ Shared Quota: {int(usage_pct * 100)}% Used ({format_big_number(used_units)} units)")
+                st.progress(usage_pct)
+                if usage_pct >= 1.0:
+                    st.error("⚠️ Shared quota exhausted. Please use your own key.")
+            else:
+                st.error("🚨 Shared key not found.")
+
+            if "api_key" in st.query_params: del st.query_params["api_key"]
+
         else:
-            api_key = default_key
-            current_url_key = st.query_params.get("api_key", "")
-            if api_key != current_url_key and "YOUTUBE_API_KEY" not in st.secrets:
-                if st.button("🔗 Generate Bookmark Link"):
-                    st.query_params["api_key"] = api_key
-                    st.success("Link updated!")
+            st.markdown("👉 [**How to get an API Key?**](https://developers.google.com/youtube/v3/getting-started) 🔑")
+            url_key = st.query_params.get("api_key", "")
+            user_input_key = st.text_input("Your YouTube API Key", value=url_key, type="password",
+                                           help="Enter your own key.")
 
+            if user_input_key:
+                api_key = user_input_key
+                st.query_params["api_key"] = user_input_key
+            else:
+                if "api_key" in st.query_params: del st.query_params["api_key"]
+                st.warning("👈 Please enter your API Key or check 'Use Shared Key'.")
+
+        st.divider()
         st.header("Targeting and Filtering")
 
         search_topic = st.text_input("Search Query", placeholder="", help="The main subject of the videos.")
@@ -246,20 +265,11 @@ def main():
                                help="Uncheck for Exact Match (Recommended). Check to allow broader results.")
         exclude_words_input = st.text_input("Exclude Queries", placeholder="",
                                             help="Words to exclude from results (e.g. 'dropshipping').")
-
-        # Create a list of words to strictly exclude in Python
         exclude_words_list = [w.strip() for w in exclude_words_input.split() if w.strip()]
 
         final_query_parts = []
-        if search_topic:
-            final_query_parts.append(search_topic if is_broad else f'"{search_topic}"')
-
-        # We still add negatives to the API query to reduce junk,
-        # but we rely on the strict Python filter to do the real work.
-        if exclude_words_input:
-            negatives = " ".join([f"-{w}" for w in exclude_words_list])
-            final_query_parts.append(negatives)
-
+        if search_topic: final_query_parts.append(search_topic if is_broad else f'"{search_topic}"')
+        if exclude_words_input: final_query_parts.append(" ".join([f"-{w}" for w in exclude_words_list]))
         final_query_string = " ".join(final_query_parts)
 
         country_names = sorted(list(ALL_COUNTRY_CODES.keys()))
@@ -279,24 +289,14 @@ def main():
             cat_map = {}
 
         name_to_id = {v: k for k, v in cat_map.items()}
-
-        # --- MULTI-SELECT CATEGORIES ---
         clean_cat_options = sorted([k for k in name_to_id.keys()])
 
-        selected_cat_names = st.multiselect(
-            "Include Categories",
-            options=clean_cat_options,
-            default=[],
-            help="Leave empty to search ALL categories. Select multiple to broaden search."
-        )
+        selected_cat_names = st.multiselect("Include Categories", options=clean_cat_options, default=[],
+                                            help="Leave empty to search ALL categories.")
         include_cat_ids = [name_to_id[n] for n in selected_cat_names]
 
-        exclude_cat_names = st.multiselect(
-            "Exclude Categories",
-            options=clean_cat_options,
-            default=[],
-            help="Videos from these categories will be removed."
-        )
+        exclude_cat_names = st.multiselect("Exclude Categories", options=clean_cat_options, default=[],
+                                           help="Videos from these categories will be removed.")
         exclude_cat_ids = [name_to_id[n] for n in exclude_cat_names]
 
         duration_options = {"Any": "any", "Short (<4m)": "short", "Medium (4-20m)": "medium", "Long (>20m)": "long"}
@@ -323,7 +323,7 @@ def main():
     """, unsafe_allow_html=True)
 
     if not api_key:
-        st.info("👈 Please enter your YouTube API Key in the sidebar to start.")
+        st.info("👈 Please enter your YouTube API Key (or check 'Use Shared Key') in the sidebar to start.")
         return
 
     try:
@@ -334,50 +334,46 @@ def main():
                 st.warning("Please enter a Search Query.")
                 return
 
-            # --- HIDDEN ADMIN: VIEW LOGS ---
             if final_query_string.strip() == '"admin_view_logs"':
                 log_df = get_logs()
                 if log_df is not None:
                     st.success("Admin Access Granted: Viewing Logs")
                     csv_logs = log_df.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Download Log File",
-                        data=csv_logs,
-                        file_name="server_logs.csv",
-                        mime="text/csv"
-                    )
+                    st.download_button(label="📥 Download Log File", data=csv_logs, file_name="server_logs.csv",
+                                       mime="text/csv")
                     st.dataframe(log_df, use_container_width=True)
                     st.stop()
                 else:
                     st.warning("No logs found yet.")
                     st.stop()
-            # -------------------------------
 
             display_year = year if year else "All Time"
             lang_msg = f"in {selected_lang_label}" if selected_lang_code else ""
             with st.spinner(f"Searching for '{final_query_string}' in {selected_country} {lang_msg}..."):
 
-                raw_videos = search_videos(
+                # --- 1. SEARCH VIDEOS & COUNT COST ---
+                raw_videos, search_cost = search_videos(
                     youtube, final_query_string,
-                    include_cat_ids, exclude_cat_ids,  # <--- Passing lists now
+                    include_cat_ids, exclude_cat_ids,
                     exclude_words_list,
                     target_total, year, selected_region_code, 'relevance',
                     selected_lang_code, selected_duration_code, 'any'
                 )
 
-                # --- LOGGING WITH USER ID ---
-                if raw_videos:
-                    log_usage(st.session_state.visit_id, "Search Run", query=final_query_string,
-                              country=selected_country, result_count=len(raw_videos))
-
                 if not raw_videos:
                     log_usage(st.session_state.visit_id, "Search (No Results)", query=final_query_string,
-                              country=selected_country)
+                              country=selected_country, quota_units=search_cost)
                     st.warning("No videos found matching criteria.")
                     return
 
+                # --- 2. CHANNEL STATS & COUNT COST ---
                 unique_channel_ids = {v['snippet']['channelId'] for v in raw_videos if 'snippet' in v}
-                channel_stats = get_channel_stats(youtube, unique_channel_ids)
+                channel_stats, channel_cost = get_channel_stats(youtube, unique_channel_ids)
+
+                # --- 3. LOG TOTAL COST ---
+                total_quota_cost = search_cost + channel_cost
+                log_usage(st.session_state.visit_id, "Search Run", query=final_query_string, country=selected_country,
+                          result_count=len(raw_videos), quota_units=total_quota_cost)
 
                 processed_data = []
                 rank_counter = 1
@@ -444,7 +440,6 @@ def main():
 
             tab_videos, tab_channels = st.tabs(["📹 Video Results", "📢 Channel Insights"])
 
-            # --- TAB 1: VIDEOS ---
             with tab_videos:
                 with st.container():
                     st.markdown(f"""
@@ -479,7 +474,7 @@ def main():
                     with c2:
                         def on_dl_click():
                             log_usage(st.session_state.visit_id, "Data Export", query=final_query_string,
-                                      country=selected_country, result_count=len(df_full))
+                                      country=selected_country, result_count=len(df_full), quota_units=0)
 
                         st.download_button(
                             "📥 Download Results (CSV)", csv_data, f"youtube_{meta_name}.csv", "text/csv",
@@ -523,7 +518,7 @@ def main():
 
                     eng_badge = f'<span class="engagement-badge tooltip" data-tooltip="View to Like Ratio" style="background:#e6f4ea; color:#137333;">★ V/L: {eng}%</span>' if eng > 5 else f'<span class="tooltip" data-tooltip="View to Like Ratio" style="color:#70757a; font-size:11px;">V/L: {eng}%</span>'
                     lang_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Spoken Language"].upper()}</div>' if \
-                        row['Spoken Language'] != "N/A" else ""
+                    row['Spoken Language'] != "N/A" else ""
                     cat_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Video Category"]}</div>'
 
                     grid_html += f"""
@@ -554,7 +549,6 @@ def main():
                 grid_html += "</div>"
                 st.markdown(grid_html, unsafe_allow_html=True)
 
-            # --- TAB 2: CHANNEL INSIGHTS (MATCHING STYLE) ---
             with tab_channels:
                 channel_groups = df_full.groupby('Channel ID')
                 channel_data = []
@@ -579,7 +573,6 @@ def main():
                     sov_res = (total_res_views / grand_total_res_views * 100) if grand_total_res_views > 0 else 0
                     sov_glob = (global_views / grand_total_global_views * 100) if grand_total_global_views > 0 else 0
 
-                    # Sort videos by view count for the mini-slider
                     sorted_group = group.sort_values(by="Views", ascending=False)
 
                     channel_data.append({
@@ -637,8 +630,8 @@ def main():
 
                 for _, row in cdf.iterrows():
                     mini_grid_html = "".join([
-                        f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="flex: 0 0 160px; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:8px; aspect-ratio:16/9; object-fit:cover; border:1px solid #eee; transition: transform 0.2s;"></a>'
-                        for v in row['Video List']])
+                                                 f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="flex: 0 0 160px; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:8px; aspect-ratio:16/9; object-fit:cover; border:1px solid #eee; transition: transform 0.2s;"></a>'
+                                                 for v in row['Video List']])
 
                     logo = row['Logo'] if row['Logo'] else "https://cdn-icons-png.flaticon.com/512/847/847969.png"
 
