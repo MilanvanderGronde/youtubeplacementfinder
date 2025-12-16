@@ -84,7 +84,7 @@ margin-top: 1rem!important;
 
 }
 .channelCard > span:nth-child(even) {
-    display: none;
+    display: none !important;
 }
 
 .creator-footer {
