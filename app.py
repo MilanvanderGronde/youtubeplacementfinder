@@ -21,8 +21,11 @@ st.set_page_config(
 
 # --- CSS LOADER ---
 def load_css(file_name):
-    with open(file_name) as f:
-        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    try:
+        with open(file_name) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning("style.css not found.")
 
 # --- HELPER FUNCTIONS ---
 def parse_duration(duration_iso):
@@ -98,7 +101,7 @@ def get_channel_stats(_youtube, channel_ids):
     unique_ids_list = list(channel_ids)
     quota_cost = 0
 
-    # Request parts for full details (auditDetails/contentOwnerDetails omitted as they require OAuth)
+    # Request parts for full details
     parts = "snippet,statistics,contentDetails,topicDetails,status,brandingSettings"
 
     for i in range(0, len(unique_ids_list), 50):
@@ -123,7 +126,7 @@ def get_channel_stats(_youtube, channel_ids):
                 
                 # Parsing Topics (cleaning up the Wikipedia URLs)
                 topic_cats = topics.get("topicCategories", [])
-                clean_topics = [t.split('/')[-1] for t in topic_cats] # Extract 'Music' from '.../wiki/Music'
+                clean_topics = [t.split('/')[-1] for t in topic_cats] 
                 
                 thumbs = snippet.get("thumbnails", {})
                 thumb_url = thumbs.get("default", {}).get("url") or \
@@ -131,7 +134,6 @@ def get_channel_stats(_youtube, channel_ids):
                             "https://cdn-icons-png.flaticon.com/512/847/847969.png"
 
                 channel_data_map[cid] = {
-                    # Snippet
                     "title": snippet.get("title"),
                     "description": snippet.get("description"),
                     "customUrl": snippet.get("customUrl", "N/A"),
@@ -139,34 +141,25 @@ def get_channel_stats(_youtube, channel_ids):
                     "country": snippet.get("country", "N/A"),
                     "defaultLanguage": snippet.get("defaultLanguage", "N/A"),
                     "thumbnail": thumb_url,
-                    
-                    # Statistics
                     "viewCount": int(stats.get("viewCount", 0)),
                     "subscriberCount": stats.get("subscriberCount", "0"),
-                    "hiddenSubscriberCount": stats.get("hiddenSubscriberCount", False),
                     "videoCount": int(stats.get("videoCount", 0)),
-                    
-                    # Content Details (Uploads Playlist)
                     "uploadsPlaylist": content.get("relatedPlaylists", {}).get("uploads", ""),
-                    
-                    # Topic Details
                     "topicCategories": ", ".join(clean_topics),
-                    
-                    # Status
                     "privacyStatus": status.get("privacyStatus", "N/A"),
-                    "isLinked": status.get("isLinked", False),
                     "madeForKids": status.get("madeForKids", False),
-                    "selfDeclaredMadeForKids": status.get("selfDeclaredMadeForKids", False),
-                    
-                    # Branding
                     "keywords": keywords
                 }
         except HttpError: pass
     return channel_data_map, quota_cost
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def search_videos(_youtube, query, exclude_words_list, target_total, year, region_code, sort_order, relevance_language, video_duration, video_type):
-    """ Search Mode Logic """
+def search_videos(_youtube, query, include_cat_ids, exclude_words_list, target_total, year, region_code, sort_order, relevance_language, video_duration, video_type):
+    """ 
+    Search Mode Logic 
+    - UPDATED: Now supports 'include_cat_ids' for specific category filtering.
+    - UPDATED: Removed 'exclude_cat_ids' to save quota/budget.
+    """
     all_videos = []
     next_page_token = None
     max_per_page = 50
@@ -185,6 +178,10 @@ def search_videos(_youtube, query, exclude_words_list, target_total, year, regio
             if year:
                 search_params['publishedAfter'] = f"{year}-01-01T00:00:00Z"
                 search_params['publishedBefore'] = f"{int(year) + 1}-01-01T00:00:00Z"
+            
+            # Optimization: If only 1 category is selected, filter at API level (Saves quota/time)
+            if len(include_cat_ids) == 1:
+                search_params['videoCategoryId'] = include_cat_ids[0]
 
             search_response = _youtube.search().list(**search_params).execute()
             quota_cost += 100
@@ -203,9 +200,16 @@ def search_videos(_youtube, query, exclude_words_list, target_total, year, regio
             for video in fetched_videos:
                 title = video['snippet']['title'].lower()
                 desc = video['snippet'].get('description', '').lower()
+                
+                # Exclude words logic
                 if any(w.lower() in title or w.lower() in desc for w in exclude_words_list):
                     continue
                 
+                # Include Categories Logic (If multiple selected)
+                vid_cat = video['snippet'].get('categoryId')
+                if include_cat_ids and vid_cat not in include_cat_ids:
+                    continue
+
                 all_videos.append(video)
                 if len(all_videos) >= target_total: return all_videos[:target_total], quota_cost
             
@@ -281,10 +285,7 @@ def batch_analyze_videos(_youtube, video_ids, cat_map):
 
 # --- MAIN UI ---
 def main():
-    try:
-        load_css("style.css")
-    except FileNotFoundError:
-        st.error("style.css not found. Please create the file.")
+    load_css("style.css")
 
     if 'visit_id' not in st.session_state:
         st.session_state.visit_id = str(uuid.uuid4())
@@ -347,6 +348,12 @@ def main():
             sel_duration = st.selectbox("Duration", options=["Any", "Short (<4m)", "Medium (4-20m)", "Long (>20m)"])
             duration_map = {"Any": "any", "Short (<4m)": "short", "Medium (4-20m)": "medium", "Long (>20m)": "long"}
             
+            # --- CATEGORY INCLUSION UI ---
+            name_to_id = {v: k for k, v in cat_map.items()}
+            clean_cat_options = sorted([k for k in name_to_id.keys()])
+            selected_cat_names = st.multiselect("Include Categories", options=clean_cat_options, default=[], help="Search ONLY within these categories.")
+            include_cat_ids = [name_to_id[n] for n in selected_cat_names]
+
             target_total = st.number_input("Max Results", min_value=1, value=20)
             year = st.text_input("Year", placeholder="2025")
 
@@ -356,8 +363,9 @@ def main():
                 return
 
             with st.spinner(f"Searching for '{final_query}'..."):
+                # 1. Search Logic
                 videos, cost = search_videos(
-                    youtube, final_query, exclude_list, target_total, 
+                    youtube, final_query, include_cat_ids, exclude_list, target_total, 
                     int(year) if year.isdigit() else None, 
                     ALL_COUNTRY_CODES[sel_country], 'relevance', 
                     LANGUAGE_CODES[sel_lang], duration_map[sel_duration], 'any'
@@ -367,39 +375,285 @@ def main():
                     st.warning("No results found.")
                     return
 
-                # Get Channel Stats
+                # 2. Channel Logic
                 c_ids = {v['snippet']['channelId'] for v in videos}
                 c_stats, c_cost = get_channel_stats(youtube, c_ids)
                 
                 log_usage(st.session_state.visit_id, "Search Run", query=final_query, quota_units=cost+c_cost)
 
-                data = []
-                for v in videos:
-                    snip = v['snippet']
-                    stats = v['statistics']
-                    cid = snip['channelId']
-                    c_data = c_stats.get(cid, {})
+                # 3. Rich Processing
+                processed_data = []
+                rank_counter = 1
+                for video in videos:
+                    snippet = video["snippet"]
+                    stats = video.get("statistics", {})
+                    details = video.get("contentDetails", {})
+                    views = int(stats.get("viewCount", 0))
+                    likes = int(stats.get("likeCount", 0))
+                    comments = int(stats.get("commentCount", 0))
+                    duration_sec = parse_duration(details.get("duration", "PT0S"))
+                    published_at = snippet.get("publishedAt", "")
+                    like_ratio = (likes / views * 100) if views > 0 else 0
+                    comment_ratio = (comments / views * 100) if views > 0 else 0
                     
-                    data.append({
-                        "Title": snip['title'],
-                        "Channel": snip['channelTitle'],
-                        "Channel Subs": c_data.get('subscriberCount', "N/A"),
-                        "Channel Country": c_data.get('country', "N/A"),
-                        "Channel Keywords": c_data.get('keywords', ""),
-                        "Views": int(stats.get('viewCount', 0)),
-                        "Category": cat_map.get(snip.get('categoryId'), str(snip.get('categoryId'))),
-                        "URL": f"https://www.youtube.com/watch?v={v['id']}"
+                    avg_daily_views = 0
+                    if published_at:
+                        pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                        today_dt = datetime.now(timezone.utc)
+                        days_live = (today_dt - pub_dt).days
+                        avg_daily_views = views / days_live if days_live > 0 else views
+
+                    cid = snippet.get("channelId")
+                    c_data = c_stats.get(cid, {})
+                    cat_id = snippet.get("categoryId")
+                    current_cat_name = cat_map.get(cat_id, str(cat_id))
+
+                    processed_data.append({
+                        "Rank": rank_counter,
+                        "Thumbnail": snippet.get("thumbnails", {}).get("high", {}).get("url", ""),
+                        "Title": snippet.get("title"),
+                        "Channel": snippet.get("channelTitle"),
+                        "Channel ID": cid,
+                        "Channel Subscribers": c_data.get("subscriberCount", "N/A"),
+                        "Channel Total Views": c_data.get("viewCount", 0),
+                        "Channel Logo": c_data.get("thumbnail", ""),
+                        "Channel Video Count": c_data.get("videoCount", 0),
+                        "Views": views, "Likes": likes, "Comments": comments,
+                        "Avg Views per Day": round(avg_daily_views, 2),
+                        "Published Date": published_at.split("T")[0],
+                        "Like-to-View Ratio (%)": round(like_ratio, 2),
+                        "Comment-to-View Ratio (%)": round(comment_ratio, 2),
+                        "Duration (Seconds)": duration_sec,
+                        "Spoken Language": snippet.get("defaultAudioLanguage", "N/A"),
+                        "Text Language": snippet.get("defaultLanguage", "N/A"),
+                        "Video Category": current_cat_name,
+                        "Tags": "|".join(snippet.get("tags", [])),
+                        "URL": f"https://www.youtube.com/watch?v={video['id']}"
                     })
-                
-                df = pd.DataFrame(data)
-                st.success(f"Found {len(df)} videos. Quota Used: {cost+c_cost} units.")
-                
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Download CSV", csv, "results.csv", "text/csv", type="primary")
-                st.dataframe(df, use_container_width=True)
+                    rank_counter += 1
+
+                st.session_state['df_full'] = pd.DataFrame(processed_data)
+                st.session_state['search_meta'] = f"{re.sub(r'[^a-zA-Z0-9]', '_', search_topic)}"
+
+        # 4. Results Display
+        if 'df_full' in st.session_state:
+            df_full = st.session_state['df_full']
+            meta_name = st.session_state.get('search_meta', 'results')
+            st.divider()
+
+            total_vids = len(df_full)
+            total_views = int(df_full['Views'].sum())
+            total_daily = int(df_full['Avg Views per Day'].sum())
+            csv_data = df_full.to_csv(index=False).encode('utf-8')
+
+            tab_videos, tab_channels = st.tabs(["📹 Video Results", "📢 Channel Insights"])
+
+            with tab_videos:
+                with st.container():
+                    st.markdown(f"""
+                    <div class="overViewDiv">
+                        <div class="overViewDivHeader">🔍 Overview for search: {final_query}</div>
+                        <div class="overViewDivMetrics">
+                            <div><b>{total_vids}</b> Videos</div>
+                            <div><b>{format_big_number(total_views)}</b> Views</div>
+                            <div><b>{format_big_number(total_daily)}</b> Daily Views</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        count_high = len(df_full[df_full['Views'] > 10000])
+                        count_mid = len(df_full[(df_full['Views'] >= 1000) & (df_full['Views'] <= 10000)])
+                        count_low = len(df_full[df_full['Views'] < 1000])
+
+                        segment_filter = st.radio(
+                            "Filter Results by View Count:",
+                            options=["All", "> 10k Views", "1k - 10k Views", "< 1k Views"],
+                            format_func=lambda x: {
+                                "All": f"Show All ({total_vids})",
+                                "> 10k Views": f"> 10k Views ({count_high})",
+                                "1k - 10k Views": f"1k - 10k Views ({count_mid})",
+                                "< 1k Views": f"< 1k Views ({count_low})"
+                            }[x],
+                            horizontal=True,
+                            label_visibility="collapsed"
+                        )
+                    with c2:
+                        st.download_button(
+                            "📥 Download Results (CSV)", csv_data, f"youtube_{meta_name}.csv", "text/csv",
+                            type="primary", use_container_width=True
+                        )
+
+                filtered_df = df_full.copy()
+                if "> 10k" in segment_filter:
+                    filtered_df = filtered_df[filtered_df['Views'] > 10000]
+                elif "1k - 10k" in segment_filter:
+                    filtered_df = filtered_df[(filtered_df['Views'] >= 1000) & (filtered_df['Views'] <= 10000)]
+                elif "< 1k" in segment_filter:
+                    filtered_df = filtered_df[filtered_df['Views'] < 1000]
+
+                sort_col1, _ = st.columns([2, 2])
+                with sort_col1:
+                    local_sort = st.selectbox("Sort Preview By",
+                                              ["Relevance (Default)", "Engagement (High)", "Views (High)",
+                                               "Daily Views (High)", "Newest First"], index=0, key="local_sort")
+
+                preview_df = filtered_df.copy()
+                if "Engagement" in local_sort:
+                    preview_df = preview_df.sort_values("Like-to-View Ratio (%)", ascending=False)
+                elif "Views" in local_sort and "Daily" not in local_sort:
+                    preview_df = preview_df.sort_values("Views", ascending=False)
+                elif "Daily" in local_sort:
+                    preview_df = preview_df.sort_values("Avg Views per Day", ascending=False)
+                elif "Newest" in local_sort:
+                    preview_df = preview_df.sort_values("Published Date", ascending=False)
+
+                # VIDEO GRID RENDER (WITH TOOLTIPS)
+                grid_html = '<div class="video-grid">'
+                for row in preview_df.head(20).to_dict('records'):
+                    views_fmt = format_big_number(row['Views'])
+                    daily_fmt = format_big_number(row['Avg Views per Day'])
+                    likes_fmt = format_big_number(row['Likes'])
+                    comments_fmt = format_big_number(row['Comments'])
+                    dur_fmt = format_duration(row['Duration (Seconds)'])
+                    time_ago = format_time_ago(row['Published Date'])
+                    eng = row['Like-to-View Ratio (%)']
+
+                    eng_badge = f'<span class="engagement-badge tooltip" data-tooltip="View to Like Ratio" style="background:#e6f4ea; color:#137333;">★ V/L: {eng}%</span>' if eng > 5 else f'<span class="tooltip" data-tooltip="View to Like Ratio" style="color:#70757a; font-size:11px;">V/L: {eng}%</span>'
+                    lang_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Spoken Language"].upper()}</div>' if row['Spoken Language'] != "N/A" else ""
+                    cat_badge = f'<div style="background:rgba(0,0,0,0.7); color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">{row["Video Category"]}</div>'
+
+                    grid_html += f"""
+<div class="video-card">
+    <a href="{row['URL']}" target="_blank" class="thumbnail-container">
+        <img src="{row['Thumbnail']}" alt="{row['Title']}">
+        <div style="position:absolute; top:8px; right:8px; display:flex; flex-direction:column; gap:4px; align-items:flex-end; z-index:10;">
+            {lang_badge}
+            {cat_badge}
+        </div>
+        <div class="rank-badge">#{row['Rank']}</div>
+        <div class="duration-badge">{dur_fmt}</div>
+    </a>
+    <div class="card-content">
+        <a href="{row['URL']}" target="_blank" class="video-title" title="{row['Title']}">{row['Title']}</a>
+        <div class="channel-row"><span>{row['Channel']}</span><span>{time_ago}</span></div>
+    </div>
+    <div class="stats-container">
+        <div style="display:flex; gap:12px;">
+            <div title="Total Views">👁️ {views_fmt}</div>
+            <div style="font-size:11px; color:#70757a;" title="Daily Views">🔥 {daily_fmt}/d</div>
+            <div style="font-size:11px; color:#70757a;" title="Likes">👍 {likes_fmt}</div>
+            <div style="font-size:11px; color:#70757a;" title="Comments">💬 {comments_fmt}</div>
+        </div>
+        <div>{eng_badge}</div>
+    </div>
+</div>"""
+                grid_html += "</div>"
+                st.markdown(grid_html, unsafe_allow_html=True)
+
+            with tab_channels:
+                channel_groups = df_full.groupby('Channel ID')
+                channel_data = []
+                grand_total_res_views = df_full['Views'].sum()
+                grand_total_global_views = 0
+                for cid, group in channel_groups:
+                    first = group.iloc[0]
+                    grand_total_global_views += int(first['Channel Total Views'])
+
+                for cid, group in channel_groups:
+                    first = group.iloc[0]
+                    total_res_views = int(group['Views'].sum())
+                    avg_like_ratio = group['Like-to-View Ratio (%)'].mean()
+                    subs = first['Channel Subscribers']
+                    sub_val = int(subs) if isinstance(subs, str) and subs.isdigit() else 0
+                    global_views = int(first['Channel Total Views'])
+                    
+                    sov_res = (total_res_views / grand_total_res_views * 100) if grand_total_res_views > 0 else 0
+                    sov_glob = (global_views / grand_total_global_views * 100) if grand_total_global_views > 0 else 0
+                    
+                    sorted_group = group.sort_values(by="Views", ascending=False)
+                    channel_data.append({
+                        "Channel": first['Channel'],
+                        "ID": cid,
+                        "Logo": first['Channel Logo'],
+                        "Subscribers": subs,
+                        "Sub_Val": sub_val,
+                        "Global_Views": global_views,
+                        "Result_Views": total_res_views,
+                        "Avg_Like_Ratio": avg_like_ratio,
+                        "Videos Found": len(group),
+                        "SoV Results": round(sov_res, 2),
+                        "SoV Global": round(sov_glob, 2),
+                        "Video List": sorted_group.to_dict('records')
+                    })
+
+                cdf = pd.DataFrame(channel_data)
+                c_total = len(cdf)
+                c_subs_est = cdf["Sub_Val"].sum()
+                c_lifetime_views = cdf["Global_Views"].sum()
+
+                st.markdown(f"""
+                <div class="overViewDiv" style="background-color: #fce8e6; color: #c5221f;">
+                    <div style="font-size: 1.1rem; font-weight: 500; margin-bottom: 10px;">📢 Channel Overview</div>
+                    <div class="overViewDivChannelMetrics" style="display: flex; gap: 30px; align-items: center; flex-wrap: wrap;">
+                        <div><b>{c_total}</b> Unique Channels</div>
+                        <div style="border-left: 1px solid #c5221f; padding-left: 20px;"><b>{format_big_number(c_lifetime_views)}</b> Total Channel Views (Lifetime)</div>
+                        <div style="border-left: 1px solid #c5221f; padding-left: 20px;"><b>{format_big_number(c_subs_est)}+</b> Total Subscribers</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                sort_col, _ = st.columns([2, 3])
+                with sort_col:
+                    chan_sort = st.selectbox("Sort Channels By",
+                                             ["Share of Voice (Results)", "Share of Voice (Global)", "Total Subscribers", "Lifetime Views", "Videos Found"],
+                                             index=0, key="channel_sort")
+
+                if "Results" in chan_sort:
+                    cdf = cdf.sort_values("Result_Views", ascending=False)
+                elif "Global" in chan_sort:
+                    cdf = cdf.sort_values("Global_Views", ascending=False)
+                elif "Subscribers" in chan_sort:
+                    cdf = cdf.sort_values("Sub_Val", ascending=False)
+                elif "Lifetime" in chan_sort:
+                    cdf = cdf.sort_values("Global_Views", ascending=False)
+                elif "Videos" in chan_sort:
+                    cdf = cdf.sort_values("Videos Found", ascending=False)
+
+                for _, row in cdf.iterrows():
+                    mini_grid_html = "".join([f'<a href="{v["URL"]}" target="_blank" title="{v["Title"]}" style="flex: 0 0 160px; text-decoration:none;"><img src="{v["Thumbnail"]}" style="width:100%; border-radius:8px; aspect-ratio:16/9; object-fit:cover; border:1px solid #eee; transition: transform 0.2s;"></a>' for v in row['Video List']])
+                    logo = row['Logo'] if row['Logo'] else "https://cdn-icons-png.flaticon.com/512/847/847969.png"
+                    
+                    card_html = f"""
+<div class="channelResultsGrid">
+    <div>
+        <img src="{logo}" style="width:50px; height:50px; border-radius:50%; object-fit:cover; border:1px solid #eee;">
+        <a href="https://www.youtube.com/channel/{row['ID']}" target="_blank" style="font-size:18px; font-weight:600; color:#202124; text-decoration:none;">{row['Channel']}</a> 
+        <div style="flex-grow:1;">
+            <div class="channelCard">
+                <span><b>{row['Subscribers']}</b> Subs</span>
+                <span style="color:#dadce0;">|</span>
+                <span><b>{format_big_number(row['Global_Views'])}</b> Ch. Views</span>
+                <span style="color:#dadce0;">|</span>
+                <span><b>{row['Videos Found']}</b> Vids in Results</span>
+                <span style="color:#dadce0;">|</span>
+                <span><b>{format_big_number(row['Result_Views'])}</b> Result Views</span>
+                <span style="color:#dadce0;">|</span>
+                <span class="tooltip" data-tooltip="Average View-to-Like Ratio for videos in this search."><b>{row['Avg_Like_Ratio']:.1f}%</b> Avg V/L</span>
+                <span style="color:#dadce0;">|</span>
+                <span class="tooltip" data-tooltip="This channel's share of the total views found in this specific search result." style="color:#1a73e8; background:#e8f0fe; padding:1px 6px; border-radius:4px; cursor:help;"><b>{row['SoV Results']}%</b> SoV (Res)</span>
+                <span style="color:#dadce0;">|</span>
+                <span class="tooltip" data-tooltip="This channel's share of the combined lifetime views of all channels found in this search." style="color:#137333; background:#e6f4ea; padding:1px 6px; border-radius:4px; cursor:help;"><b>{row['SoV Global']}%</b> SoV (Glob)</span>
+            </div>
+        </div>
+    </div>
+    <div style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin;">{mini_grid_html}</div>
+</div>"""
+                    st.markdown(card_html, unsafe_allow_html=True)
 
     # ==========================================
-    # TOOL 2: LIST ANALYZER (UPLOAD)
+    # TOOL 2: LIST ANALYZER (UPLOAD) - [UNCHANGED]
     # ==========================================
     elif tool_mode == "📊 List Analyzer":
         st.markdown("""
