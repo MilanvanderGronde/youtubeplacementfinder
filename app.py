@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import re
 import uuid
-import io
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from datetime import datetime, timezone
@@ -157,8 +156,6 @@ def get_channel_stats(_youtube, channel_ids):
 def search_videos(_youtube, query, include_cat_ids, exclude_words_list, target_total, year, region_code, sort_order, relevance_language, video_duration, video_type):
     """ 
     Search Mode Logic 
-    - UPDATED: Now supports 'include_cat_ids' for specific category filtering.
-    - UPDATED: Removed 'exclude_cat_ids' to save quota/budget.
     """
     all_videos = []
     next_page_token = None
@@ -299,14 +296,21 @@ def main():
         use_shared_key = st.checkbox("Use Shared Key (Free)", value=False)
         api_key = ""
         
+        # --- FIXED: Robust Secret Handling ---
         if use_shared_key:
-            if "YOUTUBE_API_KEY" in st.secrets:
-                api_key = st.secrets["YOUTUBE_API_KEY"]
-                usage_pct, used_units = estimate_daily_usage()
-                st.info(f"ℹ️ Shared Quota: {int(usage_pct * 100)}% Used ({format_big_number(used_units)} units)")
-                st.progress(usage_pct)
-                if usage_pct >= 1.0: st.error("⚠️ Shared quota exhausted.")
-            else: st.error("🚨 Shared key not found.")
+            try:
+                # Accessing st.secrets causes a crash if the file is missing
+                # We wrap it in try/except to handle local runs safely
+                if "YOUTUBE_API_KEY" in st.secrets:
+                    api_key = st.secrets["YOUTUBE_API_KEY"]
+                    usage_pct, used_units = estimate_daily_usage()
+                    st.info(f"ℹ️ Shared Quota: {int(usage_pct * 100)}% Used ({format_big_number(used_units)} units)")
+                    st.progress(usage_pct)
+                    if usage_pct >= 1.0: st.error("⚠️ Shared quota exhausted.")
+                else:
+                    st.error("🚨 Shared key not found in secrets.")
+            except Exception:
+                st.warning("⚠️ No secrets file found locally. Please enter your own API Key below.")
         else:
             url_key = st.query_params.get("api_key", "")
             user_input_key = st.text_input("Your YouTube API Key", value=url_key, type="password")
